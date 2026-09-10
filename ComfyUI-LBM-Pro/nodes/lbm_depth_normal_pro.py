@@ -1,0 +1,89 @@
+"""LBM Depth/Normal Pro — emit raw + post-processed depth/normal maps."""
+from __future__ import annotations
+
+import torch
+
+import comfy.model_management as mm
+
+from lbm_core import LBM_MODEL_TYPE
+
+
+class LBM_DepthNormal_Pro:
+    """Run the LBM depth/normal model and emit both raw and post-processed images."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "lbm_model": (LBM_MODEL_TYPE,),
+                "image": ("IMAGE",),
+                "task": (["depth", "normal"], {"default": "depth"}),
+                "steps": (
+                    "INT",
+                    {"default": 28, "min": 1, "max": 100},
+                ),
+            },
+            "optional": {
+                "bridge_noise_sigma": (
+                    "FLOAT",
+                    {"default": 0.1, "min": 0.0, "max": 0.1, "step": 0.001},
+                ),
+                "mask": ("MASK",),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "IMAGE")
+    RETURN_NAMES = ("raw", "post_processed")
+    FUNCTION = "process"
+    CATEGORY = "🧪AILab/🔆LBM-Pro"
+
+    def process(
+        self,
+        lbm_model: dict,
+        image: torch.Tensor,
+        task: str,
+        steps: int,
+        bridge_noise_sigma: float = 0.1,
+        mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        model = lbm_model["model"]
+        dtype = lbm_model["dtype"]
+        device = lbm_model["device"]
+
+        x = image.clone().permute(0, 3, 1, 2).to(device, dtype) * 2 - 1
+        batch = {"source_image": x}
+        if mask is not None:
+            m = mask
+            if m.ndim == 2:
+                m = m.unsqueeze(0).unsqueeze(0)
+            elif m.ndim == 3:
+                m = m.unsqueeze(0)
+            batch["mask"] = m.to(device, dtype)
+
+        model.vae.to(device)
+        z = model.vae.encode(batch[model.source_key])
+        model.vae.cpu()
+        model.to(device)
+
+        prev_sigma = model.bridge_noise_sigma
+        model.bridge_noise_sigma = float(bridge_noise_sigma)
+        try:
+            out = model.sample(z=z, num_steps=steps, conditioner_inputs=batch).clamp(-1, 1)
+        finally:
+            model.bridge_noise_sigma = prev_sigma
+
+        out = out.permute(0, 2, 3, 1).cpu().float()
+        out = (out + 1) / 2
+
+        if task == "depth":
+            post = 1 - out
+        else:
+            post = out
+
+        model.cpu()
+        mm.soft_empty_cache()
+        return (out, post)
+
+
+NODE_CLASS_MAPPINGS = {"LBM_DepthNormal_Pro": LBM_DepthNormal_Pro}
+NODE_DISPLAY_NAME_MAPPINGS = {"LBM_DepthNormal_Pro": "LBM Depth/Normal Pro"}

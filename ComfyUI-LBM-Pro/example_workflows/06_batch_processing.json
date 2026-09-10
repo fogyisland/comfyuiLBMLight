@@ -1,0 +1,32 @@
+{
+  "last_node_id": 5,
+  "last_link_id": 4,
+  "nodes": [
+    {"id": 1, "type": "LBM_Model_Loader", "pos": [0, 0], "size": [320, 220],
+     "inputs": [], "outputs": [{"name": "lbm_model", "type": "LBM_MODEL", "links": [1]}],
+     "widgets_values": ["LBM_relighting.safetensors", "relighting", "bf16", 0.005, false], "properties": {}},
+    {"id": 2, "type": "LoadImagesFromDirectory", "pos": [0, 260], "size": [320, 180],
+     "inputs": [], "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [2]}],
+     "widgets_values": ["input_images"], "properties": {}},
+    {"id": 3, "type": "LBM_Light_Preset", "pos": [0, 480], "size": [320, 180],
+     "inputs": [], "outputs": [{"name": "light_preset", "type": "LIGHT_PRESET", "links": [3]}],
+     "widgets_values": ["preset", "warm_neutral", 0, 45, 1.0, 5500], "properties": {}},
+    {"id": 4, "type": "LBM_Batch_Processor", "pos": [400, 200], "size": [320, 220],
+     "inputs": [{"name": "lbm_model", "type": "LBM_MODEL", "link": 1},
+                {"name": "images", "type": "IMAGE", "link": 2},
+                {"name": "light_preset", "type": "LIGHT_PRESET", "link": 3}],
+     "outputs": [{"name": "images", "type": "IMAGE", "links": [4]}],
+     "widgets_values": [28], "properties": {}},
+    {"id": 5, "type": "SaveImage", "pos": [800, 200], "size": [320, 220],
+     "inputs": [{"name": "images", "type": "IMAGE", "link": 4}],
+     "outputs": [], "widgets_values": ["batch_relit"], "properties": {}}
+  ],
+  "links": [
+    [1, 1, 0, 4, 0, "LBM_MODEL"],
+    [2, 2, 0, 4, 1, "IMAGE"],
+    [3, 3, 0, 4, 2, "LIGHT_PRESET"],
+    [4, 4, 0, 5, 0, "IMAGE"]
+  ],
+  "groups": [], "config": {},
+  "extra": {"workflow_info": {"name": "06_batch_processing"}}
+}
