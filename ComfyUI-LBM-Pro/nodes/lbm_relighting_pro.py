@@ -1,4 +1,8 @@
-"""LBM Relighting Pro — enhanced relighting with light preset + tinting."""
+"""LBM Relighting Pro — enhanced relighting with light preset + tinting.
+
+This node uses the rewritten LBM runtime (``lbm_native``) under the
+hood.  Public UI strings and node wiring are unchanged.
+"""
 from __future__ import annotations
 
 import torch
@@ -59,37 +63,40 @@ class LBM_Relighting_Pro:
                 "description": wp.description,
             }
 
-        model = lbm_model["model"]
+        solver = lbm_model["model"]
         dtype = lbm_model["dtype"]
         device = lbm_model["device"]
 
         x = image.clone().permute(0, 3, 1, 2).to(device, dtype) * 2 - 1
-        batch = {"source_image": x}
+        batch = {solver.schedule.anchor_field: x}
         if mask is not None:
             m = mask
             if m.ndim == 2:
                 m = m.unsqueeze(0).unsqueeze(0)
             elif m.ndim == 3:
                 m = m.unsqueeze(0)
-            batch["mask"] = m.to(device, dtype)
+            batch[solver.schedule.mask_field or "mask"] = m.to(device, dtype)
 
-        model.vae.to(device)
-        z = model.vae.encode(batch[model.source_key])
-        model.vae.cpu()
-        model.to(device)
+        solver.codec.to(device)
+        anchor_key = solver.schedule.anchor_field
+        z = solver.codec.encode(batch[anchor_key])
+        solver.codec.cpu()
+        solver.to(device)
 
         sigma = float(light_preset.get("bridge_noise_sigma", 0.005))
-        prev_sigma = model.bridge_noise_sigma
-        model.bridge_noise_sigma = sigma
+        prev_sigma = solver.schedule.noise_jitter
+        solver.schedule.noise_jitter = sigma
         try:
-            out = model.sample(z=z, num_steps=steps, conditioner_inputs=batch).clamp(-1, 1)
+            out = solver.decode_latents_to_pixels(
+                z=z, num_steps=steps, conditioner_inputs=batch
+            ).clamp(-1, 1)
         finally:
-            model.bridge_noise_sigma = prev_sigma
+            solver.schedule.noise_jitter = prev_sigma
 
         out = out.permute(0, 2, 3, 1).cpu().float()
         out = (out + 1) / 2
         out = _apply_tint(out, light_preset)
-        model.cpu()
+        solver.cpu()
         mm.soft_empty_cache()
         return (out,)
 

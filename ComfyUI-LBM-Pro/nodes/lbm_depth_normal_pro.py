@@ -46,31 +46,34 @@ class LBM_DepthNormal_Pro:
         bridge_noise_sigma: float = 0.1,
         mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        model = lbm_model["model"]
+        solver = lbm_model["model"]
         dtype = lbm_model["dtype"]
         device = lbm_model["device"]
 
         x = image.clone().permute(0, 3, 1, 2).to(device, dtype) * 2 - 1
-        batch = {"source_image": x}
+        batch = {solver.schedule.anchor_field: x}
         if mask is not None:
             m = mask
             if m.ndim == 2:
                 m = m.unsqueeze(0).unsqueeze(0)
             elif m.ndim == 3:
                 m = m.unsqueeze(0)
-            batch["mask"] = m.to(device, dtype)
+            batch[solver.schedule.mask_field or "mask"] = m.to(device, dtype)
 
-        model.vae.to(device)
-        z = model.vae.encode(batch[model.source_key])
-        model.vae.cpu()
-        model.to(device)
+        solver.codec.to(device)
+        anchor_key = solver.schedule.anchor_field
+        z = solver.codec.encode(batch[anchor_key])
+        solver.codec.cpu()
+        solver.to(device)
 
-        prev_sigma = model.bridge_noise_sigma
-        model.bridge_noise_sigma = float(bridge_noise_sigma)
+        prev_sigma = solver.schedule.noise_jitter
+        solver.schedule.noise_jitter = float(bridge_noise_sigma)
         try:
-            out = model.sample(z=z, num_steps=steps, conditioner_inputs=batch).clamp(-1, 1)
+            out = solver.decode_latents_to_pixels(
+                z=z, num_steps=steps, conditioner_inputs=batch
+            ).clamp(-1, 1)
         finally:
-            model.bridge_noise_sigma = prev_sigma
+            solver.schedule.noise_jitter = prev_sigma
 
         out = out.permute(0, 2, 3, 1).cpu().float()
         out = (out + 1) / 2
@@ -80,7 +83,7 @@ class LBM_DepthNormal_Pro:
         else:
             post = out
 
-        model.cpu()
+        solver.cpu()
         mm.soft_empty_cache()
         return (out, post)
 

@@ -1,7 +1,9 @@
 """LBM model construction and checkpoint loading for LBM-Pro.
 
-Centralizes the duplicated architecture blocks from the original
-LBM_Relighting.py and LBM_DepthNormal.py node implementations.
+Builds the four collaborators (denoiser, scheduler, codec, aggregator)
+and stitches them into a :class:`BridgeSolver`.  This module is the
+only place that knows about the legacy checkpoint shape; nodes
+consume the resulting solver via its public API.
 """
 from __future__ import annotations
 
@@ -11,33 +13,36 @@ import torch
 from diffusers import FlowMatchEulerDiscreteScheduler
 from diffusers.models import AutoencoderKL
 
-from lbm.models.embedders import ConditionerWrapper
-from lbm.models.lbm import LBMConfig, LBMModel
-from lbm.models.unets import DiffusersUNet2DCondWrapper
-from lbm.models.vae import AutoencoderKLDiffusers
+from lbm_native import (
+    BridgeSchedule,
+    BridgeSolver,
+    ConditionAggregator,
+    CondUNet2D,
+    LatentCodec,
+)
 
 
-_TASK_CONFIG = {
+_TASK_SCHEDULE = {
     "relighting": {
-        "target_key": "source_image",
-        "prob": [0.25, 0.25, 0.25, 0.25],
-        "default_sigma": 0.005,
+        "goal_field": "source_image",
+        "discrete_weights": [0.25, 0.25, 0.25, 0.25],
+        "noise_jitter": 0.005,
     },
     "depth": {
-        "target_key": "depth",
-        "prob": [0.025, 0.05, 0.025, 0.9],
-        "default_sigma": 0.1,
+        "goal_field": "depth",
+        "discrete_weights": [0.025, 0.05, 0.025, 0.9],
+        "noise_jitter": 0.1,
     },
     "normal": {
-        "target_key": "normals",
-        "prob": [0.05, 0.1, 0.05, 0.8],
-        "default_sigma": 0.1,
+        "goal_field": "normals",
+        "discrete_weights": [0.05, 0.1, 0.05, 0.8],
+        "noise_jitter": 0.1,
     },
 }
 
 
-def _build_unet(dtype: torch.dtype) -> DiffusersUNet2DCondWrapper:
-    return DiffusersUNet2DCondWrapper(
+def _assemble_cond_unet(dtype: torch.dtype) -> CondUNet2D:
+    return CondUNet2D(
         in_channels=4,
         out_channels=4,
         center_input_sample=False,
@@ -67,8 +72,8 @@ def _build_unet(dtype: torch.dtype) -> DiffusersUNet2DCondWrapper:
     ).to(dtype)
 
 
-def _build_vae(dtype: torch.dtype) -> AutoencoderKLDiffusers:
-    vae_config = {
+def _assemble_codec(dtype: torch.dtype) -> LatentCodec:
+    cfg = {
         "_class_name": "AutoencoderKL",
         "_diffusers_version": "0.20.0.dev0",
         "act_fn": "silu",
@@ -94,58 +99,62 @@ def _build_vae(dtype: torch.dtype) -> AutoencoderKLDiffusers:
             "UpDecoderBlock2D",
         ],
     }
-    vae = AutoencoderKLDiffusers(AutoencoderKL.from_config(vae_config))
-    vae.freeze()
+    vae = LatentCodec(AutoencoderKL.from_config(cfg))
     vae.to(dtype)
     return vae
 
 
-def _build_scheduler() -> FlowMatchEulerDiscreteScheduler:
-    scheduler_config = {
-        "num_train_timesteps": 1000,
-        "shift": 1.0,
-        "use_dynamic_shifting": False,
-        "beta_schedule": "scaled_linear",
-        "beta_start": 0.00085,
-        "beta_end": 0.012,
-        "timestep_spacing": "leading",
-    }
-    return FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
+def _assemble_scheduler() -> FlowMatchEulerDiscreteScheduler:
+    return FlowMatchEulerDiscreteScheduler.from_config(
+        {
+            "num_train_timesteps": 1000,
+            "shift": 1.0,
+            "use_dynamic_shifting": False,
+            "beta_schedule": "scaled_linear",
+            "beta_start": 0.00085,
+            "beta_end": 0.012,
+            "timestep_spacing": "leading",
+        }
+    )
 
 
 def build_lbm_model(
     task: Literal["relighting", "depth", "normal"],
     dtype: torch.dtype,
     bridge_noise_sigma: float,
-) -> LBMModel:
-    """Construct an LBM model with the architecture matching the task."""
-    if task not in _TASK_CONFIG:
-        raise ValueError(f"Unknown task '{task}'. Expected one of {list(_TASK_CONFIG)}")
-    cfg = _TASK_CONFIG[task]
-    config = {
-        "source_key": "source_image",
-        "target_key": cfg["target_key"],
-        "timestep_sampling": "custom_timesteps",
-        "selected_timesteps": [250, 500, 750, 1000],
-        "prob": cfg["prob"],
-        "bridge_noise_sigma": bridge_noise_sigma,
-    }
-    return LBMModel(
-        LBMConfig(**config),
-        denoiser=_build_unet(dtype),
-        sampling_noise_scheduler=_build_scheduler(),
-        vae=_build_vae(dtype),
-        conditioner=ConditionerWrapper(conditioners=[]),
+) -> BridgeSolver:
+    """Construct a solver wired with the architecture for ``task``."""
+    if task not in _TASK_SCHEDULE:
+        raise ValueError(f"Unknown task '{task}'. Expected one of {list(_TASK_SCHEDULE)}")
+    spec = _TASK_SCHEDULE[task]
+    schedule = BridgeSchedule(
+        anchor_field="source_image",
+        goal_field=spec["goal_field"],
+        timestep_policy="discrete",
+        discrete_timesteps=[250, 500, 750, 1000],
+        discrete_weights=spec["discrete_weights"],
+        noise_jitter=bridge_noise_sigma,
+    )
+    return BridgeSolver(
+        schedule=schedule,
+        denoiser=_assemble_cond_unet(dtype),
+        sampling_noise_scheduler=_assemble_scheduler(),
+        codec=_assemble_codec(dtype),
+        aggregator=ConditionAggregator(branches=[]),
     ).to(dtype)
 
 
 def load_lbm_checkpoint(
-    model: LBMModel,
+    model: BridgeSolver,
     ckpt_path: str,
     dtype: torch.dtype,
     device: torch.device,
 ) -> None:
-    """Load safetensors weights into the model in-place."""
+    """Load safetensors weights into the solver in-place.
+
+    Accepts ``model: BridgeSolver``; the type signature is the only
+    piece of legacy nomenclature retained on this function's API.
+    """
     from comfy.utils import load_torch_file
 
     sd = load_torch_file(ckpt_path, device=device, safe_load=True)
