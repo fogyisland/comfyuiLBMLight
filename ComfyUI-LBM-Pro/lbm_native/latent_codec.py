@@ -13,7 +13,7 @@ that is undesirable for a frozen pretrained component.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Literal, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -60,7 +60,12 @@ class LatentCodec(nn.Module):
       * ``downsampling_factor`` / ``latent_channels`` — introspected
     """
 
-    def __init__(self, vae_model: AutoencoderKL, tiling: Optional[TilePlan] = None) -> None:
+    def __init__(
+        self,
+        vae_model: AutoencoderKL,
+        tiling: Optional[TilePlan] = None,
+        normalize: Literal["sd1", "sdxl"] = "sd1",
+    ) -> None:
         super().__init__()
         self.vae_model = vae_model
         self.tile_plan = tiling or TilePlan()
@@ -70,6 +75,27 @@ class LatentCodec(nn.Module):
         self.shift_factor = float(getattr(config, "shift_factor", 0.0) or 0.0)
         self._has_latents_mean = getattr(config, "latents_mean", None) is not None
         self._has_latents_std = getattr(config, "latents_std", None) is not None
+        # C3: gate the SDXL ``latents_mean``/``latents_std`` branch on an
+        # explicit caller-supplied mode so an SD1 VAE config that happens
+        # to carry these fields (e.g. malformed checkpoint) cannot be
+        # silently mis-normalised.
+        self.normalize_mode: Literal["sd1", "sdxl"] = normalize
+        if normalize == "sdxl":
+            if not (self._has_latents_mean and self._has_latents_std):
+                raise ValueError(
+                    "LatentCodec(normalize='sdxl') requires the VAE config "
+                    "to carry both latents_mean and latents_std."
+                )
+        else:  # sd1
+            if (
+                self._has_latents_mean
+                and self.shift_factor != 0.0
+            ):
+                raise ValueError(
+                    "LatentCodec(normalize='sd1') cannot apply shift_factor "
+                    f"({self.shift_factor}) together with config.latents_mean; "
+                    "the VAE config carries conflicting normalisation fields."
+                )
         self.downsampling_factor = 8
         for piece in self.vae_model.parameters():
             piece.requires_grad_(False)
@@ -100,8 +126,13 @@ class LatentCodec(nn.Module):
         return (stacked - self.shift_factor) * self.scaling_factor
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
-        """Inverse of :meth:`encode`; tiles when latent is large."""
-        if self._has_latents_mean and self._has_latents_std:
+        """Inverse of :meth:`encode`; tiles when latent is large.
+
+        C4: the output dtype matches ``z.dtype`` so callers can rely on
+        encode/decode symmetry regardless of the underlying VAE weights'
+        dtype.
+        """
+        if self.normalize_mode == "sdxl":
             mean = self.vae_model.config.latents_mean
             std = self.vae_model.config.latents_std
             mean_t = torch.tensor(mean, device=z.device, dtype=z.dtype).view(
@@ -119,9 +150,11 @@ class LatentCodec(nn.Module):
             rescaled.shape[2] > plan.tile_h or rescaled.shape[3] > plan.tile_w
         )
         if not too_big:
-            return self.vae_model.decode(rescaled).sample
+            pixels = self.vae_model.decode(rescaled).sample
+            return pixels.to(z.dtype)
 
-        return self._decode_tiled(rescaled)
+        pixels = self._decode_tiled(rescaled)
+        return pixels.to(z.dtype)
 
     def _decode_tiled(self, z: torch.Tensor) -> torch.Tensor:
         """Decode each spatial tile and blend overlapping regions."""
@@ -184,24 +217,50 @@ class LatentCodec(nn.Module):
         ``replicate`` at edges that contain high-frequency content
         (text, hair), which reduces the visible colour band in the
         VAE's first decoder layer.
+
+        C10: ``reflect`` requires the padding to be strictly smaller
+        than the input dim.  When the input is so small that
+        ``pad_h >= H`` (or ``pad_w >= W``) we fall back to
+        ``replicate`` instead of crashing.
         """
         _, _, H, W = tile.shape
         if H >= tile_h and W >= tile_w:
             return tile
         pad_h = tile_h - H
         pad_w = tile_w - W
-        return torch.nn.functional.pad(tile, (0, pad_w, 0, pad_h), mode="reflect")
+        # reflect requires pad < input dim on the corresponding axis;
+        # otherwise the input alone can't supply a neighbour to mirror.
+        if pad_h >= H or pad_w >= W:
+            mode = "replicate"
+        else:
+            mode = "reflect"
+        return torch.nn.functional.pad(tile, (0, pad_w, 0, pad_h), mode=mode)
 
     @staticmethod
     def _make_window(H: int, W: int, ovh: int, oVw: int) -> torch.Tensor:
-        """A 2-D linear ramp that ramps up from edges and plateaus in the middle."""
-        if H <= 2 * ovh or W <= 2 * oVw:
-            return torch.ones(1, H, W)
-        # 1-D ramps
-        ramp_y = torch.ones(H)
-        ramp_y[:ovh] = torch.linspace(0.0, 1.0, ovh)
-        ramp_y[-ovh:] = torch.linspace(1.0, 0.0, ovh)
-        ramp_x = torch.ones(W)
-        ramp_x[:oVw] = torch.linspace(0.0, 1.0, oVw)
-        ramp_x[-oVw:] = torch.linspace(1.0, 0.0, oVw)
+        """A 2-D linear ramp that ramps up from edges and plateaus in the middle.
+
+        C11: when a tile is shorter than ``2 * overlap`` on either axis,
+        build a full ramp that covers the whole dimension rather than
+        returning ones — otherwise the last (rightmost / bottom) tile
+        leaves a visible seam where it meets the penultimate tile.
+        """
+        # 1-D ramps on Y
+        if H <= 2 * ovh and H > 0:
+            ramp_y = torch.linspace(0.0, 1.0, H)
+        elif H <= 0:
+            ramp_y = torch.ones(0)
+        else:
+            ramp_y = torch.ones(H)
+            ramp_y[:ovh] = torch.linspace(0.0, 1.0, ovh)
+            ramp_y[-ovh:] = torch.linspace(1.0, 0.0, ovh)
+        # 1-D ramps on X
+        if W <= 2 * oVw and W > 0:
+            ramp_x = torch.linspace(0.0, 1.0, W)
+        elif W <= 0:
+            ramp_x = torch.ones(0)
+        else:
+            ramp_x = torch.ones(W)
+            ramp_x[:oVw] = torch.linspace(0.0, 1.0, oVw)
+            ramp_x[-oVw:] = torch.linspace(1.0, 0.0, oVw)
         return (ramp_y[:, None] * ramp_x[None, :]).unsqueeze(0)
