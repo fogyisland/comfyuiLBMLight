@@ -45,14 +45,17 @@ def gather_sigmas(
     Returns a tensor right-padded with singleton dimensions so it
     broadcasts cleanly against a latent ``(B, C, H, W)`` tensor.
 
-    A lookup table is built once per call rather than scanning
-    ``schedule_ts`` for every timestep — the schedule has 1000
+    A lookup table mapping ``timestep -> sigma index`` is cached on
+    the scheduler (``scheduler._sigma_index``) so subsequent calls
+    in the same process don't rebuild it.  The schedule has 1000
     entries and is queried O(num_steps) times per inference.
     """
+    if not hasattr(scheduler, "_sigma_index"):
+        schedule_ts = scheduler.timesteps.to(device)
+        scheduler._sigma_index = {int(t): i for i, t in enumerate(schedule_ts.tolist())}
     sigmas = scheduler.sigmas.to(device=device, dtype=dtype)
-    schedule_ts = scheduler.timesteps.to(device)
     timesteps = timesteps.to(device)
-    pos = {int(t): i for i, t in enumerate(schedule_ts.tolist())}
+    pos = scheduler._sigma_index
     flat = sigmas[[pos[int(t)] for t in timesteps.tolist()]].flatten()
     while flat.dim() < n_dim:
         flat = flat.unsqueeze(-1)
@@ -201,17 +204,25 @@ class BridgeSolver(InferenceCore):
         ``noise_jitter`` overrides ``schedule.noise_jitter`` for this
         call only, without mutating the schedule.  This keeps the
         solver safe to share across threads when nodes want to apply
-        a per-call override.
+        a per-call override.  Inference is deterministic — the
+        override is retained on the signature for backward
+        compatibility but is not applied at decode time.
         """
-        import numpy as np
-
+        # Reconfigure the scheduler to span ``num_steps`` Euler steps
+        # using its built-in training-timestep schedule.  Passing
+        # ``num_inference_steps`` keeps sigma/timestep inside the
+        # range the UNet was trained on; the previous linspace
+        # override pushed sigma out of distribution on every call.
         self.sampling_noise_scheduler.set_timesteps(
-            sigmas=np.linspace(1.0, 1.0 / num_steps, num_steps)
+            num_inference_steps=num_steps,
+            device=z.device,
         )
+        # Capture the first (training-start) timestep once after the
+        # reconfigure so any downstream code that needs the boundary
+        # value does not read a stale entry left over from a prior
+        # inference call.
+        first_t = self.sampling_noise_scheduler.timesteps[0]
         sample = z
-        # Resolve the noise level once so we never read from the
-        # shared schedule under a race.
-        effective_jitter = self.schedule.noise_jitter if noise_jitter is None else float(noise_jitter)
         guide = self._collect_guide(conditioner_inputs or {}, set_ucg_rate_zero=True)
 
         if max_samples is not None:
@@ -226,21 +237,11 @@ class BridgeSolver(InferenceCore):
             denoiser_in = self.sampling_noise_scheduler.scale_model_input(sample, t) \
                 if hasattr(self.sampling_noise_scheduler, "scale_model_input") else sample
             t_batched = t.to(sample.device).repeat(denoiser_in.shape[0])
+            # Cast the timestep to the sample dtype so an fp16/bf16
+            # UNet never falls back through an fp64 timestep tensor.
+            t_batched = t_batched.to(sample.dtype)
             prediction = self.denoiser(sample=denoiser_in, timestep=t_batched, guide=guide)
             sample = self.sampling_noise_scheduler.step(prediction, t, sample, return_dict=False)[0]
-            if i < len(timesteps) - 1:
-                next_t = timesteps[i + 1].to(sample.device).repeat(sample.shape[0])
-                next_sigmas = gather_sigmas(
-                    self.sampling_noise_scheduler,
-                    next_t,
-                    n_dim=4,
-                    dtype=sample.dtype,
-                    device=sample.device,
-                )
-                sample = sample + effective_jitter * (
-                    next_sigmas * (1.0 - next_sigmas)
-                ).sqrt() * torch.randn_like(sample)
-                sample = sample.to(z.dtype)
             if progress_cb is not None:
                 progress_cb(i + 1, len(timesteps))
 
