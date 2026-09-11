@@ -6,10 +6,10 @@ import shutil
 
 import requests
 import torch
-from tqdm import tqdm
 
 import folder_paths
 import comfy.model_management as mm
+from comfy.utils import ProgressBar
 
 from lbm_core import (
     LIGHT_PRESET_TYPE,
@@ -19,11 +19,27 @@ from lbm_core import (
 from lbm_core.model_factory import build_lbm_model, load_lbm_checkpoint
 
 
-_MODEL_URLS = {
-    "relighting": "https://huggingface.co/jasperai/LBM_relighting/resolve/main/model.safetensors",
-    "depth": "https://huggingface.co/jasperai/LBM_depth/resolve/main/model.safetensors",
-    "normal": "https://huggingface.co/jasperai/LBM_normals/resolve/main/model.safetensors",
+# Per-task model repository on Hugging Face. The full URL is built from
+# ``_MIRROR_HOSTS`` and ``_MODEL_REPOS`` so the user can pick a mirror
+# (or fall back to upstream) via the ``mirror`` widget on the node.
+_MODEL_REPOS = {
+    "relighting": "jasperai/LBM_relighting",
+    "depth": "jasperai/LBM_depth",
+    "normal": "jasperai/LBM_normals",
 }
+
+# Ordered host list. The first entry is the primary mirror; later entries
+# are fallbacks. ``auto`` tries them in this order; explicit choices
+# pick a single host.
+_MIRROR_HOSTS = ("hf-mirror.com", "huggingface.co")
+
+# Widget labels for the ``mirror`` dropdown. Order is significant —
+# the first entry is the implicit choice when the widget is hidden.
+_MIRROR_OPTIONS = (
+    "hf-mirror.com (default)",
+    "huggingface.co",
+    "auto (try mirror, fall back)",
+)
 
 _PRECISION_MAP = {
     "fp32": torch.float32,
@@ -43,42 +59,83 @@ def _scan_models() -> list[str]:
     return sorted(set(out))
 
 
-def _download_model(model_name: str, task: str) -> str:
+def _candidate_hosts(mirror: str) -> list[str]:
+    """Translate the widget value into an ordered list of hostnames."""
+    if mirror == "hf-mirror.com (default)":
+        return ["hf-mirror.com"]
+    if mirror == "huggingface.co":
+        return ["huggingface.co"]
+    # Default and any future "auto*" labels: try mirror first, fall back.
+    return list(_MIRROR_HOSTS)
+
+
+def _build_urls(task: str, filename: str, mirror: str) -> list[str]:
+    """Build the ordered list of candidate download URLs."""
+    repo = _MODEL_REPOS[task]
+    return [
+        f"https://{host}/{repo}/resolve/main/{filename}"
+        for host in _candidate_hosts(mirror)
+    ]
+
+
+def _download_model(
+    model_name: str,
+    task: str,
+    mirror: str = "auto (try mirror, fall back)",
+) -> str:
     base = folder_paths.get_folder_paths("diffusion_models")[0]
     target_dir = os.path.join(base, "LBM")
     os.makedirs(target_dir, exist_ok=True)
     target = os.path.join(target_dir, model_name)
-    url = _MODEL_URLS[task]
     tmp = os.path.join(target_dir, "temp_download.safetensors")
-    try:
-        with requests.get(url, stream=True) as r:
-            r.raise_for_status()
-            total = int(r.headers.get("content-length", 0))
-            with open(tmp, "wb") as f, tqdm(
-                desc=f"Downloading {model_name}",
-                total=total,
-                unit="B",
-                unit_scale=True,
-                unit_divisor=1024,
-            ) as pbar:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-                        pbar.update(len(chunk))
-        shutil.move(tmp, target)
-        return target
-    except Exception as e:
-        if os.path.exists(tmp):
+    urls = _build_urls(task, model_name, mirror)
+    last_exc: Exception | None = None
+    for url in urls:
+        try:
+            with requests.get(url, stream=True, timeout=30) as r:
+                r.raise_for_status()
+                total = int(r.headers.get("content-length", 0))
+                pbar = ProgressBar(total)
+                bytes_done = 0
+                with open(tmp, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=64 * 1024):
+                        if chunk:
+                            f.write(chunk)
+                            bytes_done += len(chunk)
+                            pbar.update_absolute(bytes_done, total)
+            shutil.move(tmp, target)
+            return target
+        except requests.RequestException as e:
+            last_exc = e
+            # Clean up a partial file before trying the next URL.
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+            continue
+    # All candidates failed — propagate the last error with context.
+    if os.path.exists(tmp):
+        try:
             os.remove(tmp)
-        raise RuntimeError(f"Failed to download model: {e}") from e
+        except OSError:
+            pass
+    raise RuntimeError(
+        f"Failed to download model {model_name!r} for task={task!r}; "
+        f"tried URLs: {urls}. Last error: {last_exc}"
+    ) from last_exc
 
 
-def _resolve_checkpoint(model_name: str, task: str) -> str:
+def _resolve_checkpoint(
+    model_name: str,
+    task: str,
+    mirror: str = "auto (try mirror, fall back)",
+) -> str:
     for path in folder_paths.get_folder_paths("diffusion_models"):
         candidate = os.path.join(path, "LBM", model_name)
         if os.path.exists(candidate):
             return candidate
-    return _download_model(model_name, task)
+    return _download_model(model_name, task, mirror)
 
 
 class LBM_Model_Loader:
@@ -102,6 +159,12 @@ class LBM_Model_Loader:
                     {"default": 0.005, "min": 0.0, "max": 0.1, "step": 0.001},
                 ),
                 "force_reload": ("BOOLEAN", {"default": False}),
+                "mirror": (
+                    list(_MIRROR_OPTIONS),
+                    {"default": "auto (try mirror, fall back)",
+                     "tooltip": "Download host. 'auto' tries hf-mirror.com "
+                                "first then huggingface.co."},
+                ),
             },
         }
 
@@ -117,14 +180,15 @@ class LBM_Model_Loader:
         precision: str,
         bridge_noise_sigma: float = 0.005,
         force_reload: bool = False,
+        mirror: str = "auto (try mirror, fall back)",
     ) -> tuple[dict]:
         dtype = _PRECISION_MAP[precision]
-        cache_key = f"{model_name}|{task}|{precision}"
+        cache_key = f"{model_name}|{task}|{precision}|{mirror}"
         if force_reload:
             LBMModelCache.unload(cache_key)
 
         def _loader():
-            ckpt = _resolve_checkpoint(model_name, task)
+            ckpt = _resolve_checkpoint(model_name, task, mirror)
             model = build_lbm_model(task, dtype, bridge_noise_sigma)
             device = mm.get_torch_device()
             offload = mm.unet_offload_device()

@@ -226,3 +226,198 @@ def test_predict_clean_state_handles_nan_inputs():
     assert torch.isnan(out).any()
     # The element that was 1.0 should remain 1.0 after the math.
     assert out[1].item() == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# N1 — Compare Grid rejects (or explicitly opts-in to) multi-frame batches
+# ---------------------------------------------------------------------------
+def test_compare_grid_rejects_multi_frame():
+    """A multi-frame input must raise ValueError under default batch_mode."""
+    from nodes.lbm_compare_grid import LBM_Compare_Grid
+
+    node = LBM_Compare_Grid()
+    # Two-frame (B=2) image, H=8, W=8, 3 channels
+    multi = torch.zeros(2, 8, 8, 3)
+    single = torch.zeros(1, 8, 8, 3)
+    with pytest.raises(ValueError):
+        node.compose(image_1=multi, image_2=single)
+
+
+def test_compare_grid_accepts_multi_frame_with_first_only():
+    """Setting batch_mode='first_only' preserves the legacy first-frame behavior."""
+    from nodes.lbm_compare_grid import LBM_Compare_Grid
+
+    node = LBM_Compare_Grid()
+    multi = torch.zeros(2, 8, 8, 3)
+    single = torch.zeros(1, 8, 8, 3)
+    out = node.compose(
+        image_1=multi, image_2=single, batch_mode="first_only"
+    )
+    # grid has shape (1, H_total, W_total, 3)
+    assert out[0].ndim == 4
+    assert out[0].shape[0] == 1
+
+
+def test_compare_grid_tile_mode_stacks_frames():
+    """batch_mode='tile' stacks frames along the height axis of each cell."""
+    from nodes.lbm_compare_grid import LBM_Compare_Grid
+
+    node = LBM_Compare_Grid()
+    # Two-frame stack of two distinct images.
+    a = torch.zeros(2, 8, 8, 3)
+    a[1] = 1.0
+    b = torch.zeros(1, 8, 8, 3)
+    out = node.compose(image_1=a, image_2=b, batch_mode="tile")
+    # Tile mode: each cell's H is doubled (since image_1 has B=2).
+    assert out[0].ndim == 4
+    assert out[0].shape[0] == 1
+
+
+# ---------------------------------------------------------------------------
+# N2 — Depth/Normal Pro refuses a model cached for a different task
+# ---------------------------------------------------------------------------
+def test_depth_normal_pro_rejects_wrong_task(monkeypatch):
+    """A model cached for task='depth' must NOT be usable with task='normal'.
+
+    ``nodes.lbm_depth_normal_pro`` imports ``comfy.model_management``
+    and ``comfy.utils`` at module load.  Inject lightweight fakes so
+    the module is importable without ComfyUI present.
+    """
+    import sys
+
+    _stub_comfy(monkeypatch)
+    # Force a fresh import of the module under test.
+    sys.modules.pop("nodes.lbm_depth_normal_pro", None)
+    from nodes.lbm_depth_normal_pro import LBM_DepthNormal_Pro
+
+    # The validation runs before any heavy work, so the rest of the
+    # lbm_model dict only needs the fields the validator reads.
+    fake_model = {
+        "task": "depth",
+        "model": object(),
+        "dtype": torch.float32,
+        "device": torch.device("cpu"),
+    }
+    node = LBM_DepthNormal_Pro()
+    with pytest.raises(ValueError):
+        node.process(
+            lbm_model=fake_model,
+            image=torch.zeros(1, 8, 8, 3),
+            task="normal",
+            steps=2,
+        )
+
+
+# ---------------------------------------------------------------------------
+# UR1 — Default download URL prefers hf-mirror.com, falls back to HF.co
+# ---------------------------------------------------------------------------
+def _stub_comfy(monkeypatch):
+    """Inject a fake ``comfy`` package so the loader module can import.
+
+    ``comfy.utils.ProgressBar`` is consumed at module load, so both
+    submodules must be on ``sys.modules`` as a *package* + submodule pair.
+    """
+    import sys
+    import types
+
+    fake_comfy = types.ModuleType("comfy")
+    fake_comfy.__path__ = []  # mark as a package so submodule imports work
+    fake_comfy_mm = types.ModuleType("comfy.model_management")
+    fake_comfy_mm.get_torch_device = lambda: None
+    fake_comfy_mm.unet_offload_device = lambda: None
+    fake_comfy_mm.soft_empty_cache = lambda: None
+    fake_comfy_utils = types.ModuleType("comfy.utils")
+
+    class _FakeProgressBar:
+        def __init__(self, total):
+            self.total = total
+
+        def update_absolute(self, current, total):
+            pass
+
+    fake_comfy_utils.ProgressBar = _FakeProgressBar
+    fake_comfy.model_management = fake_comfy_mm
+    fake_comfy.utils = fake_comfy_utils
+    monkeypatch.setitem(sys.modules, "comfy", fake_comfy)
+    monkeypatch.setitem(sys.modules, "comfy.model_management", fake_comfy_mm)
+    monkeypatch.setitem(sys.modules, "comfy.utils", fake_comfy_utils)
+
+
+def test_download_tries_mirror_first(monkeypatch, tmp_path):
+    """In auto mode the mirror is attempted before the upstream host."""
+    import sys
+    import types
+
+    fake_folder_paths = types.ModuleType("folder_paths")
+    fake_folder_paths.get_folder_paths = lambda name: [str(tmp_path)]
+    monkeypatch.setitem(sys.modules, "folder_paths", fake_folder_paths)
+    _stub_comfy(monkeypatch)
+
+    # Force a fresh import of the loader under test.
+    sys.modules.pop("nodes.lbm_model_loader", None)
+    import nodes.lbm_model_loader as loader_mod
+
+    # Track which URLs the loader tries, in order.
+    tried: list[str] = []
+
+    class _FakeResponse:
+        def __init__(self, url):
+            self.url = url
+            self.headers = {"content-length": "11"}
+
+        def raise_for_status(self):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def iter_content(self, chunk_size):
+            if "hf-mirror.com" in self.url:
+                # Mirror is "down" — force the fallback to upstream.
+                import requests as _req
+                raise _req.RequestException("simulated mirror outage")
+            yield b"hello world"
+
+    def _fake_get(url, stream=False, timeout=None, **kwargs):
+        tried.append(url)
+        return _FakeResponse(url)
+
+    monkeypatch.setattr(loader_mod.requests, "get", _fake_get)
+
+    # Run the download with the auto (try mirror, fall back) preset.
+    target = loader_mod._download_model(
+        "LBM_relighting.safetensors", "relighting",
+        mirror="auto (try mirror, fall back)",
+    )
+    # The first URL must be the mirror; the second must be huggingface.co.
+    assert tried, "requests.get was never called"
+    assert "hf-mirror.com" in tried[0], f"mirror not tried first: {tried}"
+    assert any("huggingface.co" in u for u in tried[1:]), (
+        f"upstream fallback not attempted after mirror failure: {tried}"
+    )
+    assert target.endswith("LBM_relighting.safetensors")
+
+
+def test_mirror_widget_present_in_input_types(monkeypatch, tmp_path):
+    """The LBM_Model_Loader widget must offer the mirror dropdown."""
+    import sys
+    import types
+
+    fake_folder_paths = types.ModuleType("folder_paths")
+    fake_folder_paths.get_folder_paths = lambda name: [str(tmp_path)]
+    monkeypatch.setitem(sys.modules, "folder_paths", fake_folder_paths)
+    _stub_comfy(monkeypatch)
+
+    sys.modules.pop("nodes.lbm_model_loader", None)
+    from nodes.lbm_model_loader import LBM_Model_Loader
+
+    spec = LBM_Model_Loader.INPUT_TYPES()
+    optional = spec.get("optional", {})
+    assert "mirror" in optional, "LBM_Model_Loader has no `mirror` widget"
+    options = optional["mirror"][0] if isinstance(optional["mirror"], tuple) else optional["mirror"]
+    assert "auto (try mirror, fall back)" in options
+    assert "hf-mirror.com (default)" in options
+    assert "huggingface.co" in options

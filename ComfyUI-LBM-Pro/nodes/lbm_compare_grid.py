@@ -50,6 +50,14 @@ class LBM_Compare_Grid:
                     "INT",
                     {"default": 8, "min": 0, "max": 64},
                 ),
+                "batch_mode": (
+                    ["error", "first_only", "tile"],
+                    {"default": "error",
+                     "tooltip": "How to handle inputs that have a batch "
+                                "dimension > 1. 'error' (default) raises; "
+                                "'first_only' keeps the legacy first-frame "
+                                "behavior; 'tile' stacks frames along H."},
+                ),
             },
         }
 
@@ -71,6 +79,7 @@ class LBM_Compare_Grid:
         image_8: torch.Tensor | None = None,
         image_9: torch.Tensor | None = None,
         padding: int = 8,
+        batch_mode: str = "error",
     ) -> tuple[torch.Tensor]:
         imgs = [image_1, image_2, image_3, image_4, image_5,
                 image_6, image_7, image_8, image_9]
@@ -79,7 +88,48 @@ class LBM_Compare_Grid:
         if n < 2:
             raise ValueError("Compare Grid requires at least 2 images")
 
-        firsts = [im[0] for im in imgs]
+        # Reject (or opt-in to) multi-frame inputs so the user cannot
+        # silently drop B-1 frames per input.
+        if any(im.shape[0] > 1 for im in imgs):
+            if batch_mode == "error":
+                raise ValueError(
+                    "Compare Grid only accepts single-frame images; "
+                    "got batch size > 1"
+                )
+            if batch_mode == "first_only":
+                firsts = [im[0] for im in imgs]
+            elif batch_mode == "tile":
+                # For each multi-frame input, tile its frames along H
+                # into a single tall image.  Single-frame inputs pass
+                # through unchanged.
+                firsts = []
+                for im in imgs:
+                    if im.shape[0] == 1:
+                        firsts.append(im[0])
+                    else:
+                        # im has shape (B, H, W, C); concatenate frames
+                        # along H so the result is (B*H, W, C).
+                        # Frames must share (H, W, C) — the caller's
+                        # responsibility since ComfyUI IMAGE tensors
+                        # are normally already that way.
+                        if any(
+                            im[i].shape != im[0].shape for i in range(im.shape[0])
+                        ):
+                            raise ValueError(
+                                "Compare Grid tile mode requires every "
+                                "frame of a multi-frame input to share "
+                                "shape; got "
+                                f"{[tuple(im[i].shape) for i in range(im.shape[0])]}"
+                            )
+                        firsts.append(torch.cat([im[i] for i in range(im.shape[0])], dim=0))
+            else:
+                raise ValueError(
+                    f"Unknown batch_mode {batch_mode!r}; expected one of "
+                    "'error', 'first_only', 'tile'"
+                )
+        else:
+            firsts = [im[0] for im in imgs]
+
         H = max(f.shape[0] for f in firsts)
         W = max(f.shape[1] for f in firsts)
         firsts = [

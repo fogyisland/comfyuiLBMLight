@@ -47,6 +47,16 @@ class LBM_DepthNormal_Pro:
         bridge_noise_sigma: float = 0.1,
         mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        # N2: refuse to run a model cached for a different task.
+        # A relighting model loaded into this node would produce
+        # plausible-looking but wrong outputs.
+        if lbm_model.get("task") != task:
+            raise ValueError(
+                f"LBM_DepthNormal_Pro was given a model cached for "
+                f"task={lbm_model.get('task')!r} but the node is "
+                f"configured for task={task!r}. Load the correct model "
+                "or change the task parameter to match."
+            )
         solver = lbm_model["model"]
         dtype = lbm_model["dtype"]
         device = lbm_model["device"]

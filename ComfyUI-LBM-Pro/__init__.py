@@ -7,6 +7,8 @@ not crash. ComfyUI's own node scanner calls `NODE_CLASS_MAPPINGS` /
 """
 from __future__ import annotations
 
+import sys
+
 from lbm_core.types import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE
 
 __version__ = "0.1.0"
@@ -45,6 +47,11 @@ def __getattr__(name: str):
                     mod = __import__(module_path, fromlist=["*"])
                 except ImportError as e:
                     # ComfyUI may not be available; skip this module
+                    # but log so a typo doesn't disappear silently.
+                    print(
+                        f"[ComfyUI-LBM-Pro] failed to import {module_path}: {e}",
+                        file=sys.stderr,
+                    )
                     continue
                 _LOADED[module_path] = mod
             attr_name = "NODE_CLASS_MAPPINGS" if kind == "NODE_CLASS_MAPPINGS" else "NODE_DISPLAY_NAME_MAPPINGS"
