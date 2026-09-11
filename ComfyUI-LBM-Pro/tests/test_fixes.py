@@ -428,6 +428,72 @@ def test_batch_processor_rejects_empty_batch(monkeypatch, tmp_path):
         node.process_batch(lbm_model, torch.zeros(0, 16, 16, 3), steps=2)
 
 
+def test_relighting_pro_rejects_empty_batch(monkeypatch, tmp_path):
+    """N12: an empty batch must raise ValueError.
+
+    Parallel to ``test_batch_processor_rejects_empty_batch`` — the
+    relighting node guards against the same silent-failure shape.
+    """
+    import sys
+
+    _stub_comfy(monkeypatch)
+    _stub_folder_paths(monkeypatch, str(tmp_path))
+    sys.modules.pop("nodes.lbm_model_loader", None)
+    sys.modules.pop("nodes.lbm_relighting_pro", None)
+    from nodes.lbm_relighting_pro import LBM_Relighting_Pro
+
+    class _StubSolver:
+        class _Schedule:
+            anchor_field = "source_image"
+            mask_field = None
+        schedule = _Schedule()
+
+    lbm_model = {
+        "model": _StubSolver(),
+        "dtype": torch.float32,
+        "device": torch.device("cpu"),
+    }
+    node = LBM_Relighting_Pro()
+    with pytest.raises(ValueError, match="Empty batch"):
+        node.relight(lbm_model, torch.zeros(0, 16, 16, 3), steps=2)
+
+
+def test_depth_normal_pro_rejects_empty_batch(monkeypatch, tmp_path):
+    """N12: an empty batch must raise ValueError.
+
+    Parallel to ``test_batch_processor_rejects_empty_batch`` — the
+    depth/normal node guards against the same silent-failure shape.
+    """
+    import sys
+
+    _stub_comfy(monkeypatch)
+    _stub_folder_paths(monkeypatch, str(tmp_path))
+    sys.modules.pop("nodes.lbm_model_loader", None)
+    sys.modules.pop("nodes.lbm_depth_normal_pro", None)
+    from nodes.lbm_depth_normal_pro import LBM_DepthNormal_Pro
+
+    class _StubSolver:
+        class _Schedule:
+            anchor_field = "source_image"
+            mask_field = None
+        schedule = _Schedule()
+
+    lbm_model = {
+        "model": _StubSolver(),
+        "dtype": torch.float32,
+        "task": "depth",
+        "device": torch.device("cpu"),
+    }
+    node = LBM_DepthNormal_Pro()
+    with pytest.raises(ValueError, match="Empty batch"):
+        node.process(
+            lbm_model=lbm_model,
+            image=torch.zeros(0, 16, 16, 3),
+            task="depth",
+            steps=2,
+        )
+
+
 def test_batch_processor_has_mask_widget(monkeypatch, tmp_path):
     """N5: the mask input must be exposed on the node's INPUT_TYPES."""
     import sys
