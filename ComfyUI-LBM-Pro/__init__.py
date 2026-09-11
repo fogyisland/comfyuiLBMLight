@@ -11,7 +11,7 @@ import sys
 
 from lbm_core.types import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE
 
-__version__ = "0.1.0"
+__version__ = "0.1.3"
 
 _NODE_MODULES = {
     "LBM_Model_Loader": "nodes.lbm_model_loader",
