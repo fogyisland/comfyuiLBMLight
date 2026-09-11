@@ -245,20 +245,18 @@ class LatentCodec(nn.Module):
         returning ones — otherwise the last (rightmost / bottom) tile
         leaves a visible seam where it meets the penultimate tile.
         """
-        # 1-D ramps on Y
-        if H <= 2 * ovh and H > 0:
+        # 1-D ramps on Y.  ``H`` is always >= ds >= 1 in this codec, so
+        # the degenerate ``H <= 0`` case is unreachable — only the two
+        # real shapes (full ramp vs. ramp-with-plateau) remain.
+        if H <= 2 * ovh:
             ramp_y = torch.linspace(0.0, 1.0, H)
-        elif H <= 0:
-            ramp_y = torch.ones(0)
         else:
             ramp_y = torch.ones(H)
             ramp_y[:ovh] = torch.linspace(0.0, 1.0, ovh)
             ramp_y[-ovh:] = torch.linspace(1.0, 0.0, ovh)
-        # 1-D ramps on X
-        if W <= 2 * oVw and W > 0:
+        # 1-D ramps on X — same two-way split as Y.
+        if W <= 2 * oVw:
             ramp_x = torch.linspace(0.0, 1.0, W)
-        elif W <= 0:
-            ramp_x = torch.ones(0)
         else:
             ramp_x = torch.ones(W)
             ramp_x[:oVw] = torch.linspace(0.0, 1.0, oVw)

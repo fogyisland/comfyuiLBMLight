@@ -73,6 +73,25 @@ def test_codec_rejects_conflicting_normalize():
         LatentCodec(vae, normalize="sd1")
 
 
+def test_codec_rejects_sdxl_without_latents_std():
+    """Symmetric direction of C3: ``normalize='sdxl'`` requires BOTH
+    ``latents_mean`` and ``latents_std`` to be present in the config.
+    A config that ships with only ``latents_mean`` (some SDXL VAEs do
+    this when ``std`` is left to the runtime) must be refused at
+    construction time."""
+    from diffusers.models import AutoencoderKL
+
+    from lbm_native.latent_codec import LatentCodec
+
+    cfg = _tiny_vae_config(
+        latents_mean=[0.0] * 4,
+        # latents_std intentionally omitted
+    )
+    vae = AutoencoderKL.from_config(cfg)
+    with pytest.raises((ValueError, RuntimeError)):
+        LatentCodec(vae, normalize="sdxl")
+
+
 # ---------------------------------------------------------------------------
 # C4 — decode returns the encoder input's dtype
 # ---------------------------------------------------------------------------
