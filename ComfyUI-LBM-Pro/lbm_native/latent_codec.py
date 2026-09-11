@@ -178,13 +178,19 @@ class LatentCodec(nn.Module):
 
     @staticmethod
     def _pad_latent(tile: torch.Tensor, tile_h: int, tile_w: int) -> torch.Tensor:
-        """Pad latent to ``(tile_h, tile_w)`` if short."""
+        """Pad latent to ``(tile_h, tile_w)`` if short.
+
+        ``reflect`` padding produces a smoother extension than
+        ``replicate`` at edges that contain high-frequency content
+        (text, hair), which reduces the visible colour band in the
+        VAE's first decoder layer.
+        """
         _, _, H, W = tile.shape
         if H >= tile_h and W >= tile_w:
             return tile
         pad_h = tile_h - H
         pad_w = tile_w - W
-        return torch.nn.functional.pad(tile, (0, pad_w, 0, pad_h), mode="replicate")
+        return torch.nn.functional.pad(tile, (0, pad_w, 0, pad_h), mode="reflect")
 
     @staticmethod
     def _make_window(H: int, W: int, ovh: int, oVw: int) -> torch.Tensor:

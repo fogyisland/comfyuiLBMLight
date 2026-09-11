@@ -1,9 +1,15 @@
-"""Thread-safe LRU-style model cache for LBM-Pro.
+"""Thread-safe TTL-bounded model cache for LBM-Pro.
 
 ComfyUI invokes nodes many times in a session. Loading a 1–2 GB LBM
 checkpoint takes 5–10 seconds. This cache memoizes loaded models by an
 opaque key (typically f"{name}|{task}|{precision}") with a TTL so
 unused models get released.
+
+The cache is *not* a true LRU: it does not maintain insertion order
+or evict on capacity.  It only checks the per-entry ``last_used``
+timestamp and lets a fresh loader take over once the entry has
+aged past the TTL.  Call :meth:`unload` to drop a specific entry,
+:meth:`clear` to drop everything.
 """
 from __future__ import annotations
 

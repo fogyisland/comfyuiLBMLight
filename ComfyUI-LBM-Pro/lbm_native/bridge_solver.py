@@ -6,6 +6,9 @@ and exposes:
   * :meth:`training_step`     — one bridge-matching gradient step
   * :meth:`decode_latents_to_pixels` — Euler integration that turns a
     latent batch into a pixel-space image
+  * :meth:`sample`            — deprecated alias for backwards
+    compatibility with code still using the legacy ``LBMModel.sample``
+    name
 
 The naming convention deliberately diverges from the legacy
 ``LBMModel.sample``/``forward`` style so any caller porting across
@@ -13,6 +16,7 @@ implementations has to consciously update their code.
 """
 from __future__ import annotations
 
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -40,15 +44,19 @@ def gather_sigmas(
 
     Returns a tensor right-padded with singleton dimensions so it
     broadcasts cleanly against a latent ``(B, C, H, W)`` tensor.
+
+    A lookup table is built once per call rather than scanning
+    ``schedule_ts`` for every timestep — the schedule has 1000
+    entries and is queried O(num_steps) times per inference.
     """
     sigmas = scheduler.sigmas.to(device=device, dtype=dtype)
     schedule_ts = scheduler.timesteps.to(device)
     timesteps = timesteps.to(device)
-    indices = [(schedule_ts == t).nonzero().item() for t in timesteps]
-    sigma = sigmas[indices].flatten()
-    while sigma.dim() < n_dim:
-        sigma = sigma.unsqueeze(-1)
-    return sigma
+    pos = {int(t): i for i, t in enumerate(schedule_ts.tolist())}
+    flat = sigmas[[pos[int(t)] for t in timesteps.tolist()]].flatten()
+    while flat.dim() < n_dim:
+        flat = flat.unsqueeze(-1)
+    return flat
 
 
 def predict_clean_state(sample: torch.Tensor, model_output: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
@@ -76,17 +84,32 @@ class BridgeSolver(InferenceCore):
         aggregator: Optional[ConditionAggregator] = None,
     ) -> None:
         super().__init__()
+        # Register collaborators as proper submodules so ``.to()``
+        # cascades correctly and so the state_dict reflects the
+        # architecture (codec.* / denoiser.* / aggregator.*).
         self.schedule = schedule
         self.denoiser = denoiser
         self.codec = codec
         self.aggregator = aggregator
         self.sampling_noise_scheduler = sampling_noise_scheduler
         self.training_iter = nn.Parameter(torch.tensor(0, dtype=torch.float32), requires_grad=False)
-        # Alias used by the legacy "sample" interface.  We expose
-        # ``decode_latents_to_pixels`` as the primary name, with
-        # ``sample`` available as a thin shim for callers still
-        # written against the old interface.
-        self.sample = self.decode_latents_to_pixels
+
+    # ------------------------------------------------------------------
+    # Deprecated alias
+    # ------------------------------------------------------------------
+    def sample(self, *args, **kwargs):
+        """Deprecated alias for :meth:`decode_latents_to_pixels`.
+
+        Kept on the class (not bound dynamically in ``__init__``) so
+        the alias survives ``pickle`` round-trips and ``to(device)``
+        operations.
+        """
+        warnings.warn(
+            "BridgeSolver.sample is deprecated; call decode_latents_to_pixels() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.decode_latents_to_pixels(*args, **kwargs)
 
     # ------------------------------------------------------------------
     # Training
@@ -167,12 +190,18 @@ class BridgeSolver(InferenceCore):
         conditioner_inputs: Optional[Dict[str, Any]] = None,
         max_samples: Optional[int] = None,
         progress_cb: Optional[Callable[[int, int], None]] = None,
+        noise_jitter: Optional[float] = None,
     ) -> torch.Tensor:
         """Integrate the bridge ODE from ``z`` to a pixel image.
 
         ``z`` is assumed to be a latent batch (B, C, H/8, W/8).  The
         scheduler is reconfigured in-place to span ``num_steps``
         Euler steps; the callback receives ``(completed, total)``.
+
+        ``noise_jitter`` overrides ``schedule.noise_jitter`` for this
+        call only, without mutating the schedule.  This keeps the
+        solver safe to share across threads when nodes want to apply
+        a per-call override.
         """
         import numpy as np
 
@@ -180,6 +209,9 @@ class BridgeSolver(InferenceCore):
             sigmas=np.linspace(1.0, 1.0 / num_steps, num_steps)
         )
         sample = z
+        # Resolve the noise level once so we never read from the
+        # shared schedule under a race.
+        effective_jitter = self.schedule.noise_jitter if noise_jitter is None else float(noise_jitter)
         guide = self._collect_guide(conditioner_inputs or {}, set_ucg_rate_zero=True)
 
         if max_samples is not None:
@@ -205,12 +237,20 @@ class BridgeSolver(InferenceCore):
                     dtype=sample.dtype,
                     device=sample.device,
                 )
-                sample = sample + self.schedule.noise_jitter * (
+                sample = sample + effective_jitter * (
                     next_sigmas * (1.0 - next_sigmas)
                 ).sqrt() * torch.randn_like(sample)
                 sample = sample.to(z.dtype)
             if progress_cb is not None:
                 progress_cb(i + 1, len(timesteps))
+
+        # Numerical safety net: fp16/fp32 drift in the Euler loop
+        # can produce a stray nan/inf that would otherwise turn the
+        # entire output image black or white.  We clamp to a sane
+        # latent range and patch up any non-finite values before
+        # handing the sample to the codec.
+        sample = torch.nan_to_num(sample, nan=0.0, posinf=4.0, neginf=-4.0)
+        sample = sample.clamp(-4.0, 4.0)
 
         if self.codec is not None:
             return self.codec.decode(sample)

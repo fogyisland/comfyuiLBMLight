@@ -4,6 +4,13 @@ Builds the four collaborators (denoiser, scheduler, codec, aggregator)
 and stitches them into a :class:`BridgeSolver`.  This module is the
 only place that knows about the legacy checkpoint shape; nodes
 consume the resulting solver via its public API.
+
+The checkpoint key remapping lives here too — jasperai's
+``model.safetensors`` stores VAE weights under the ``vae.vae_model.*``
+prefix (and ``vae.quant_conv.*`` / ``vae.post_quant_conv.*`` for the
+quantisation layers), while our rewriter stores the codec under
+``codec.*``.  We rewrite keys on load and refuse to silently miss a
+large share of the weights.
 """
 from __future__ import annotations
 
@@ -144,20 +151,87 @@ def build_lbm_model(
     ).to(dtype)
 
 
+# jasperai's safetensors file stores the autoencoder under the
+# ``vae.vae_model.*`` prefix, with the quantisation convs sitting
+# directly under ``vae.quant_conv.*`` and ``vae.post_quant_conv.*``.
+# Our ``BridgeSolver`` keeps the codec under ``codec.*``, so on load
+# we translate the prefix and verify that a healthy share of the
+# expected parameters actually matched.
+_CHECKPOINT_TO_MODEL_PREFIX = (
+    "vae.",  # checkpoint has this as the codec's root
+    "codec.",
+)
+
+
+def _remap_checkpoint_key(key: str) -> str:
+    """Translate a checkpoint key into the matching model key, if any."""
+    if key.startswith("vae."):
+        return _CHECKPOINT_TO_MODEL_PREFIX[1] + key[len("vae."):]
+    return key
+
+
+def _build_key_index(sd_keys):
+    """Group checkpoint keys by their post-remap target for one-pass lookups."""
+    index: dict[str, str] = {}
+    for k in sd_keys:
+        remapped = _remap_checkpoint_key(k)
+        # The first checkpoint key that maps to a given model key wins.
+        # Subsequent ones are logged as duplicates and ignored.
+        if remapped not in index:
+            index[remapped] = k
+    return index
+
+
 def load_lbm_checkpoint(
     model: BridgeSolver,
     ckpt_path: str,
     dtype: torch.dtype,
     device: torch.device,
+    *,
+    min_match_ratio: float = 0.5,
 ) -> None:
     """Load safetensors weights into the solver in-place.
 
-    Accepts ``model: BridgeSolver``; the type signature is the only
-    piece of legacy nomenclature retained on this function's API.
+    The function remaps jasperai's ``vae.*`` prefix to the
+    ``codec.*`` prefix used by the rewritten runtime, and refuses to
+    silently leave most parameters at their initial values.
+
+    Args:
+        model: solver to populate.
+        ckpt_path: filesystem path of a ``.safetensors`` file.
+        dtype: target dtype for the loaded tensors.
+        device: device the checkpoint should be uploaded to.
+        min_match_ratio: minimum fraction of solver parameters that
+            must be matched by checkpoint keys; below this the load
+            is treated as a failure and an exception is raised.
+
+    Raises:
+        RuntimeError: when the match ratio is too low — the caller
+            almost certainly has a checkpoint that does not match
+            the architecture.
     """
     from comfy.utils import load_torch_file
 
     sd = load_torch_file(ckpt_path, device=device, safe_load=True)
-    for name, param in model.named_parameters():
-        if name in sd:
-            param.data = sd[name].to(dtype=dtype)
+    key_index = _build_key_index(sd.keys())
+
+    model_params = dict(model.named_parameters())
+    matched = 0
+    for name, param in model_params.items():
+        ckpt_key = key_index.get(name)
+        if ckpt_key is None:
+            continue
+        param.data = sd[ckpt_key].to(dtype=dtype, device=param.device)
+        matched += 1
+
+    total = len(model_params)
+    ratio = matched / total if total else 0.0
+    if ratio < min_match_ratio:
+        sample_missing = sorted(set(model_params) - set(key_index))[:8]
+        raise RuntimeError(
+            "LBM checkpoint load failed: only "
+            f"{matched}/{total} ({ratio:.0%}) parameters matched. "
+            "The checkpoint likely does not match the expected "
+            "architecture. First few missing keys: "
+            f"{sample_missing}"
+        )

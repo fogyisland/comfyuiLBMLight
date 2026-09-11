@@ -4,6 +4,7 @@ from __future__ import annotations
 import torch
 
 import comfy.model_management as mm
+from comfy.utils import ProgressBar
 
 from lbm_core import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE
 from lbm_core.presets import PRESETS
@@ -66,14 +67,15 @@ class LBM_Batch_Processor:
         solver.codec.cpu()
         solver.to(device)
 
-        prev_sigma = solver.schedule.noise_jitter
-        solver.schedule.noise_jitter = float(light_preset.get("bridge_noise_sigma", 0.005))
-        try:
-            out = solver.decode_latents_to_pixels(
-                z=z, num_steps=steps, conditioner_inputs=batch
-            ).clamp(-1, 1)
-        finally:
-            solver.schedule.noise_jitter = prev_sigma
+        sigma = float(light_preset.get("bridge_noise_sigma", 0.005))
+        pbar = ProgressBar(steps)
+        out = solver.decode_latents_to_pixels(
+            z=z,
+            num_steps=steps,
+            conditioner_inputs=batch,
+            noise_jitter=sigma,
+            progress_cb=lambda completed, _total: pbar.update_absolute(completed, steps),
+        ).clamp(-1, 1)
 
         out = out.permute(0, 2, 3, 1).cpu().float()
         out = (out + 1) / 2

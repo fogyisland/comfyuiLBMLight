@@ -8,6 +8,7 @@ from __future__ import annotations
 import torch
 
 import comfy.model_management as mm
+from comfy.utils import ProgressBar
 
 from lbm_core import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE
 from lbm_core.presets import PRESETS
@@ -84,14 +85,17 @@ class LBM_Relighting_Pro:
         solver.to(device)
 
         sigma = float(light_preset.get("bridge_noise_sigma", 0.005))
-        prev_sigma = solver.schedule.noise_jitter
-        solver.schedule.noise_jitter = sigma
-        try:
-            out = solver.decode_latents_to_pixels(
-                z=z, num_steps=steps, conditioner_inputs=batch
-            ).clamp(-1, 1)
-        finally:
-            solver.schedule.noise_jitter = prev_sigma
+        # Pass the override as a per-call argument instead of mutating
+        # solver.schedule.noise_jitter.  Mutating the shared schedule
+        # is racy when two nodes reuse the same model cache entry.
+        pbar = ProgressBar(steps)
+        out = solver.decode_latents_to_pixels(
+            z=z,
+            num_steps=steps,
+            conditioner_inputs=batch,
+            noise_jitter=sigma,
+            progress_cb=lambda completed, _total: pbar.update_absolute(completed, steps),
+        ).clamp(-1, 1)
 
         out = out.permute(0, 2, 3, 1).cpu().float()
         out = (out + 1) / 2
