@@ -217,11 +217,6 @@ class BridgeSolver(InferenceCore):
             num_inference_steps=num_steps,
             device=z.device,
         )
-        # Capture the first (training-start) timestep once after the
-        # reconfigure so any downstream code that needs the boundary
-        # value does not read a stale entry left over from a prior
-        # inference call.
-        first_t = self.sampling_noise_scheduler.timesteps[0]
         sample = z
         guide = self._collect_guide(conditioner_inputs or {}, set_ucg_rate_zero=True)
 
