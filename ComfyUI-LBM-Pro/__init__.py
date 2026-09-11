@@ -7,6 +7,7 @@ not crash. ComfyUI's own node scanner calls `NODE_CLASS_MAPPINGS` /
 """
 from __future__ import annotations
 
+import os
 import sys
 
 from lbm_core.types import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE
@@ -28,6 +29,15 @@ _LOADED: dict[str, dict] = {}
 
 
 def __getattr__(name: str):
+    # PA10: when the developer sets LBM_PRO_DEBUG_RELOAD=1 in the
+    # environment, force a fresh import of every node module on the
+    # next attribute access.  Useful when iterating on a node file
+    # without restarting ComfyUI — a single ComfyUI restart picks up
+    # the new code on the next prompt.
+    if os.environ.get("LBM_PRO_DEBUG_RELOAD") == "1":
+        for mod_name in list(_NODE_MODULES.values()):
+            sys.modules.pop(mod_name, None)
+        _LOADED.clear()
     if name in ("NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"):
         kind = "NODE_CLASS_MAPPINGS" if name == "NODE_CLASS_MAPPINGS" else "NODE_DISPLAY_NAME_MAPPINGS"
         merged: dict = {}
