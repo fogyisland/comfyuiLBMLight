@@ -144,7 +144,7 @@ class LBM_Compare_Grid:
         canvas = torch.zeros(
             (rows * H + (rows + 1) * padding,
              cols * W + (cols + 1) * padding, 3),
-            dtype=firsts[0].dtype,
+            dtype=torch.float32,
         )
         for i, im in enumerate(firsts):
             r = i // cols
