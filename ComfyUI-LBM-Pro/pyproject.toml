@@ -1,9 +1,23 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "comfyui-lbm-pro"
 version = "0.1.0"
 description = "Professional LBM (Latent Bridge Matching) image processing pipeline for ComfyUI"
 requires-python = ">=3.10"
 license = {text = "GPL-3.0"}
+authors = [{name = "LBM Pro Dev"}]
+readme = "README.md"
+urls = {Repository = "https://github.com/1038lab/ComfyUI-LBM-Pro"}
+dependencies = [
+  "diffusers>=0.19.0",
+  "tqdm>=4.65.0",
+  "safetensors>=0.3.1",
+  "requests>=2.25.0",
+  "numpy>=1.22.0",
+]
 
 [tool.setuptools.packages.find]
-include = ["lbm_core*", "nodes*", "lbm_native*"]
+include = ["lbm_core*", "nodes*", "lbm_native*", "ComfyUI_LBM_Pro*"]
