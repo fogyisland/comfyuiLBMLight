@@ -19,6 +19,7 @@ from __future__ import annotations
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
@@ -28,6 +29,21 @@ from .diffusion_unet import CondUNet2D, PlainUNet2D
 from .inference_core import InferenceCore
 from .latent_codec import LatentCodec
 from .timestep_policy import BridgeSchedule
+
+
+# Module-level dedup set for DeprecationWarning suppression (C18).
+# The legacy ``sample`` alias and other deprecation paths fire once per
+# call site — we keep that one-shot behaviour per process so the log
+# stays clean even when many nodes share a cached model.
+_WARNED: set = set()
+
+
+def _warn_once(key: str, message: str, category: type = DeprecationWarning) -> None:
+    """Emit ``message`` at ``category`` at most once per ``key`` per process."""
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    warnings.warn(message, category, stacklevel=3)
 
 
 # Module-level helpers (not methods) so other modules can re-use them
@@ -45,10 +61,12 @@ def gather_sigmas(
     Returns a tensor right-padded with singleton dimensions so it
     broadcasts cleanly against a latent ``(B, C, H, W)`` tensor.
 
-    A lookup table mapping ``timestep -> sigma index`` is cached on
-    the scheduler (``scheduler._sigma_index``) so subsequent calls
-    in the same process don't rebuild it.  The schedule has 1000
-    entries and is queried O(num_steps) times per inference.
+    The lookup table mapping ``timestep -> sigma index`` is cached on
+    the scheduler (``scheduler._sigma_index``) the first time this
+    function is called and reused for every subsequent call.  If the
+    caller reconfigures the scheduler via ``set_timesteps``, the
+    cache must be invalidated by deleting ``scheduler._sigma_index``
+    before re-querying — the default cache key is per-process.
     """
     if not hasattr(scheduler, "_sigma_index"):
         schedule_ts = scheduler.timesteps.to(device)
@@ -63,9 +81,12 @@ def gather_sigmas(
 
 
 def predict_clean_state(sample: torch.Tensor, model_output: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
-    """Closed-form ``x_0`` under the bridge-matching prediction rule.
+    """Closed-form x_0 under the flow-matching prediction rule.
 
-    The rule is: ``x_0 = sample - sigma * model_output``.
+    Returns the predicted clean state given the current noisy
+    ``sample``, the model's predicted bridge direction ``model_output``,
+    and the scalar (or broadcastable) ``sigma``.  Implemented as
+    ``x_0 = sample - sigma * model_output``.
     """
     return sample - sigma * model_output
 
@@ -105,12 +126,13 @@ class BridgeSolver(InferenceCore):
 
         Kept on the class (not bound dynamically in ``__init__``) so
         the alias survives ``pickle`` round-trips and ``to(device)``
-        operations.
+        operations.  The deprecation warning is suppressed after the
+        first emission per process so a long-running graph does not
+        spam the console.
         """
-        warnings.warn(
+        _warn_once(
+            "BridgeSolver.sample",
             "BridgeSolver.sample is deprecated; call decode_latents_to_pixels() instead.",
-            DeprecationWarning,
-            stacklevel=2,
         )
         return self.decode_latents_to_pixels(*args, **kwargs)
 
@@ -164,9 +186,8 @@ class BridgeSolver(InferenceCore):
 
         pixel_recon = torch.zeros_like(latent_recon)
         if self.schedule.pixel_loss_weight > 0 and self.codec is not None:
-            denoised_for_loss = predict_clean_state(noisy, prediction, sigmas)
             pixel_recon = self.pixel_recon_err(
-                denoised_for_loss,
+                denoised,
                 goal.detach(),
                 valid_mask,
             )
@@ -299,6 +320,16 @@ class BridgeSolver(InferenceCore):
         if key is None or key not in batch:
             return torch.ones_like(goal).bool()
         mask = batch[key]
+        if mask.ndim != 4:
+            raise ValueError(
+                f"mask must be 4-D (B, 1, H, W); got {tuple(mask.shape)} "
+                f"for batch key {key!r}"
+            )
+        if mask.shape[0] != goal.shape[0]:
+            raise ValueError(
+                f"mask batch dim must equal goal batch dim "
+                f"(got {mask.shape[0]} vs {goal.shape[0]}) for batch key {key!r}"
+            )
         if mask.shape[1] != 1:
             mask = mask[:, :1]
         return mask.bool()
@@ -345,14 +376,17 @@ class BridgeSolver(InferenceCore):
         bridge = self.schedule.noise_jitter * (sigmas * (1.0 - sigmas)).sqrt() * noise
         return sigmas * anchor + (1.0 - sigmas) * goal + bridge
 
-    def _sample_timestep(self, n: int, device: torch.device) -> torch.Tensor:
-        import numpy as np
-
+    def _sample_timestep(
+        self,
+        n: int,
+        device: torch.device,
+        generator: Optional[np.random.Generator] = None,
+    ) -> torch.Tensor:
         policy = self.schedule.timestep_policy
         if policy == "uniform":
             idx = torch.randint(
                 0,
-                self.sampling_noise_scheduler.config.num_train_timesteps,
+                len(self.sampling_noise_scheduler.timesteps),
                 (n,),
                 device="cpu",
             )
@@ -365,11 +399,14 @@ class BridgeSolver(InferenceCore):
                 device="cpu",
             )
             u = torch.sigmoid(u)
-            indices = (u * self.sampling_noise_scheduler.config.num_train_timesteps).long()
+            indices = (u * len(self.sampling_noise_scheduler.timesteps)).long()
             return self.sampling_noise_scheduler.timesteps[indices].to(device=device)
         # discrete
         idx_np = np.random.choice(
-            len(self.schedule.discrete_timesteps), n, p=self.schedule.discrete_weights
+            len(self.schedule.discrete_timesteps),
+            n,
+            p=self.schedule.discrete_weights,
+            generator=generator,
         )
         table = torch.tensor(self.schedule.discrete_timesteps, device=device, dtype=torch.long)
         return table[idx_np]
