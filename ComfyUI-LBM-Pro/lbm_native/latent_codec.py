@@ -13,7 +13,7 @@ that is undesirable for a frozen pretrained component.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Optional, Tuple
+from typing import Literal, Optional
 
 import torch
 import torch.nn as nn
@@ -115,15 +115,20 @@ class LatentCodec(nn.Module):
         The rescale formula assumes the diffusers default
         ``scaling_factor`` and an optional ``shift_factor`` — exactly
         what SD1 VAE exposes.
+
+        PA17: the body runs under ``torch.no_grad()`` so a grad-enabled
+        input does not propagate through the codec and build an
+        autograd graph during inference.
         """
-        outs: list[torch.Tensor] = []
-        for i in range(0, x.shape[0], chunk):
-            tile = x[i : i + chunk]
-            dist = self.vae_model.encode(tile).latent_dist
-            sample = dist.sample()
-            outs.append(sample)
-        stacked = torch.cat(outs, dim=0)
-        return (stacked - self.shift_factor) * self.scaling_factor
+        with torch.no_grad():
+            outs: list[torch.Tensor] = []
+            for i in range(0, x.shape[0], chunk):
+                tile = x[i : i + chunk]
+                dist = self.vae_model.encode(tile).latent_dist
+                sample = dist.sample()
+                outs.append(sample)
+            stacked = torch.cat(outs, dim=0)
+            return (stacked - self.shift_factor) * self.scaling_factor
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         """Inverse of :meth:`encode`; tiles when latent is large.
@@ -131,30 +136,35 @@ class LatentCodec(nn.Module):
         C4: the output dtype matches ``z.dtype`` so callers can rely on
         encode/decode symmetry regardless of the underlying VAE weights'
         dtype.
+
+        PA17: the body runs under ``torch.no_grad()`` so a grad-enabled
+        input does not propagate through the codec and build an
+        autograd graph during inference.
         """
-        if self.normalize_mode == "sdxl":
-            mean = self.vae_model.config.latents_mean
-            std = self.vae_model.config.latents_std
-            mean_t = torch.tensor(mean, device=z.device, dtype=z.dtype).view(
-                1, self.latent_channels, 1, 1
-            )
-            std_t = torch.tensor(std, device=z.device, dtype=z.dtype).view(
-                1, self.latent_channels, 1, 1
-            )
-            rescaled = z * std_t / self.scaling_factor + mean_t
-        else:
-            rescaled = z / self.scaling_factor + self.shift_factor
+        with torch.no_grad():
+            if self.normalize_mode == "sdxl":
+                mean = self.vae_model.config.latents_mean
+                std = self.vae_model.config.latents_std
+                mean_t = torch.tensor(mean, device=z.device, dtype=z.dtype).view(
+                    1, self.latent_channels, 1, 1
+                )
+                std_t = torch.tensor(std, device=z.device, dtype=z.dtype).view(
+                    1, self.latent_channels, 1, 1
+                )
+                rescaled = z * std_t / self.scaling_factor + mean_t
+            else:
+                rescaled = z / self.scaling_factor + self.shift_factor
 
-        plan = self.tile_plan
-        too_big = (
-            rescaled.shape[2] > plan.tile_h or rescaled.shape[3] > plan.tile_w
-        )
-        if not too_big:
-            pixels = self.vae_model.decode(rescaled).sample
+            plan = self.tile_plan
+            too_big = (
+                rescaled.shape[2] > plan.tile_h or rescaled.shape[3] > plan.tile_w
+            )
+            if not too_big:
+                pixels = self.vae_model.decode(rescaled).sample
+                return pixels.to(z.dtype)
+
+            pixels = self._decode_tiled(rescaled)
             return pixels.to(z.dtype)
-
-        pixels = self._decode_tiled(rescaled)
-        return pixels.to(z.dtype)
 
     def _decode_tiled(self, z: torch.Tensor) -> torch.Tensor:
         """Decode each spatial tile and blend overlapping regions."""

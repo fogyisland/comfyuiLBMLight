@@ -22,11 +22,16 @@ def _fake_solver_state(sizes: dict[str, int]) -> dict[str, torch.Tensor]:
 def test_remap_translates_vae_prefix_to_codec_prefix():
     from lbm_core.model_factory import _remap_checkpoint_key
 
+    # `vae.vae_model.*` keeps the `vae_model` segment because the
+    # ``LatentCodec`` stores the ``AutoencoderKL`` as ``self.vae_model``.
     assert _remap_checkpoint_key("vae.vae_model.encoder.conv_in.weight") == (
         "codec.vae_model.encoder.conv_in.weight"
     )
-    assert _remap_checkpoint_key("vae.quant_conv.weight") == "codec.quant_conv.weight"
-    assert _remap_checkpoint_key("vae.post_quant_conv.weight") == "codec.post_quant_conv.weight"
+    # ``quant_conv`` / ``post_quant_conv`` live as direct attributes of
+    # the ``AutoencoderKL`` (NOT under ``vae_model``), so they need an
+    # extra ``vae_model.`` segment when remapped into the codec prefix.
+    assert _remap_checkpoint_key("vae.quant_conv.weight") == "codec.vae_model.quant_conv.weight"
+    assert _remap_checkpoint_key("vae.post_quant_conv.weight") == "codec.vae_model.post_quant_conv.weight"
     # Keys without the vae. prefix are passed through untouched so the
     # denoiser.* weights and any aggregate-level entries still match.
     assert _remap_checkpoint_key("denoiser.conv_in.weight") == "denoiser.conv_in.weight"
@@ -46,17 +51,22 @@ def test_build_key_index_first_wins():
     assert idx["codec.vae_model.encoder.conv_in.weight"] == (
         "vae.vae_model.encoder.conv_in.weight"
     )
-    assert idx["codec.quant_conv.weight"] == "vae.quant_conv.weight"
+    assert idx["codec.vae_model.quant_conv.weight"] == "vae.quant_conv.weight"
 
 
-def test_load_lbm_checkpoint_writes_matching_keys():
-    """A checkpoint whose key layout mirrors jasperai's loads cleanly."""
+def test_remap_inverse_for_dummy_keys():
+    """A checkpoint whose key layout mirrors jasperai's loads cleanly.
+
+    Renamed from the older ``test_load_lbm_checkpoint_writes_matching_keys``:
+    the test only exercises the ``_remap_checkpoint_key`` translation, not
+    a full load pass.
+    """
     from lbm_core.model_factory import _remap_checkpoint_key
 
     fake_params = {
         "denoiser.conv_in.weight": (4, 4, 3, 3),
         "codec.vae_model.encoder.conv_in.weight": (3, 3, 3, 3),
-        "codec.quant_conv.weight": (8, 4, 1, 1),
+        "codec.vae_model.quant_conv.weight": (8, 4, 1, 1),
     }
     fake_sd = {
         "denoiser.conv_in.weight": torch.full((4, 4, 3, 3), 0.5),
@@ -70,21 +80,53 @@ def test_load_lbm_checkpoint_writes_matching_keys():
         assert remapped in fake_params, f"remap dropped {k} → {remapped}"
 
 
-def test_load_lbm_checkpoint_raises_on_low_match():
-    """When too few parameters match, the loader must raise."""
-    from lbm_core.model_factory import _build_key_index, _remap_checkpoint_key
+def test_load_lbm_checkpoint_raises_on_low_match(monkeypatch):
+    """When too few parameters match, the loader must raise.
 
-    # Simulate a small model with many parameters but a checkpoint
-    # that only carries a couple of keys.  The minimum-match guard
-    # is tested directly through _build_key_index + the ratio check.
-    target = {
-        f"denoiser.block_{i}.weight": (4, 4) for i in range(20)
+    This test actually invokes ``load_lbm_checkpoint`` (with the
+    safetensors loader stubbed) rather than re-implementing the
+    ratio check in test code. The production guard is what we want
+    to exercise.
+    """
+    import sys
+    import types
+
+    import lbm_core.model_factory as factory
+
+    # ``load_lbm_checkpoint`` does ``from comfy.utils import load_torch_file``
+    # inside its body.  Inject a fake ``comfy.utils`` module so we can
+    # control the return value without depending on ComfyUI.
+    fake_comfy = types.ModuleType("comfy")
+    fake_comfy_utils = types.ModuleType("comfy.utils")
+
+    def _stub_load_torch_file(ckpt_path, device, safe_load):
+        # 1/20 = 5% — well below the 0.95 default minimum.
+        return {"denoiser.block_0.weight": torch.zeros(4, 4)}
+
+    fake_comfy_utils.load_torch_file = _stub_load_torch_file
+    fake_comfy.utils = fake_comfy_utils
+    monkeypatch.setitem(sys.modules, "comfy", fake_comfy)
+    monkeypatch.setitem(sys.modules, "comfy.utils", fake_comfy_utils)
+
+    # A solver with many parameters but a checkpoint that supplies
+    # only one key — the loader's match-ratio guard must fire.
+    target_params = {
+        f"denoiser.block_{i}.weight": torch.zeros(4, 4) for i in range(20)
     }
-    sd = {"denoiser.block_0.weight": torch.zeros(4, 4)}
-    index = _build_key_index(sd.keys())
-    matched = sum(1 for k in target if k in index)
-    ratio = matched / len(target)
-    assert ratio < 0.5  # confirms the guard would trigger
+
+    class _StubModel:
+        def named_parameters(self):
+            for k, t in target_params.items():
+                yield k, t
+
+    model = _StubModel()
+    with pytest.raises(RuntimeError):
+        factory.load_lbm_checkpoint(
+            model,
+            "/nonexistent/path/to/checkpoint.safetensors",
+            torch.float32,
+            torch.device("cpu"),
+        )
 
 
 # ---------------------------------------------------------------------------

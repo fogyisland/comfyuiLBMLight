@@ -167,3 +167,38 @@ def test_make_window_blends_partial_tile():
     # Every intermediate Y row must be strictly inside (0, 1).
     for row in y_column[1:-1]:
         assert 0.0 < float(row) < 1.0
+
+
+# ---------------------------------------------------------------------------
+# PA17 — encode/decode must not build an autograd graph
+# ---------------------------------------------------------------------------
+def test_encode_decode_no_grad():
+    """encode/decode must not propagate autograd from grad-enabled inputs.
+
+    Even though ``vae_model.requires_grad_(False)`` is set, calling
+    ``encode``/``decode`` without an explicit ``torch.no_grad()`` wrapper
+    inside the codec still builds an autograd graph when the *input*
+    has ``requires_grad=True`` (the codec is itself a Module, so
+    ``requires_grad`` propagates through). The wrapper saves inference
+    memory; this test pins that contract using a grad-enabled input so
+    the absence of the wrapper is observable.
+    """
+    import torch
+
+    codec = _make_codec()
+    # Use a grad-enabled input — only then does the absence of the
+    # ``no_grad`` wrapper surface as ``requires_grad=True`` on the output.
+    x = torch.randn(1, 3, 32, 32, requires_grad=True)
+    z = torch.randn(1, 4, 4, 4, requires_grad=True)
+
+    assert torch.is_grad_enabled()  # confirm we're not inside no_grad
+    encoded = codec.encode(x)
+    assert encoded.requires_grad is False
+    decoded = codec.decode(z)
+    assert decoded.requires_grad is False
+
+    # Calling ``.backward()`` on a no-grad tensor must raise.
+    with pytest.raises(RuntimeError):
+        encoded.sum().backward()
+    with pytest.raises(RuntimeError):
+        decoded.sum().backward()
