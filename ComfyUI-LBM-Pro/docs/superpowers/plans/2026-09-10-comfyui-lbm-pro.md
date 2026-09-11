@@ -1,3 +1,5 @@
+> **SUPERSEDED by `lbm_native/`** — this design / plan document references the pre-rewrite `lbm/` package. The current runtime is `lbm_native/`. See `README.md` for the live architecture.
+
 # ComfyUI-LBM-Pro Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

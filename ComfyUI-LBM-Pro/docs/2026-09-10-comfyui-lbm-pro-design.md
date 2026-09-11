@@ -1,3 +1,5 @@
+> **SUPERSEDED by `lbm_native/`** — this design / plan document references the pre-rewrite `lbm/` package. The current runtime is `lbm_native/`. See `README.md` for the live architecture.
+
 # ComfyUI-LBM-Pro 设计规范
 
 **日期**：2026-09-10
