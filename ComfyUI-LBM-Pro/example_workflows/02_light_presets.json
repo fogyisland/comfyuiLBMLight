@@ -6,7 +6,7 @@
       "id": 1, "type": "LBM_Model_Loader", "pos": [0, 0], "size": [320, 220],
       "inputs": [],
       "outputs": [{"name": "lbm_model", "type": "LBM_MODEL", "links": [1]}],
-      "widgets_values": ["LBM_relighting.safetensors", "relighting", "bf16", 0.005, false],
+      "widgets_values": ["LBM_relighting.safetensors", "relighting", "bf16", false, "auto (try mirror, fall back)"],
       "properties": {}
     },
     {
@@ -61,7 +61,7 @@
                 {"name": "image_3", "type": "IMAGE", "link": 22},
                 {"name": "image_4", "type": "IMAGE", "link": 23}],
      "outputs": [{"name": "grid", "type": "IMAGE", "links": [24]}],
-     "widgets_values": ["auto", 8], "properties": {}},
+     "widgets_values": ["auto", 8, "error"], "properties": {}},
     {"id": 19, "type": "SaveImage", "pos": [1300, 600], "size": [320, 220],
      "inputs": [{"name": "images", "type": "IMAGE", "link": 24}],
      "outputs": [],

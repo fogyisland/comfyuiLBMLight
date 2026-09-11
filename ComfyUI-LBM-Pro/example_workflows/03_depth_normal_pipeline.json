@@ -4,7 +4,7 @@
   "nodes": [
     {"id": 1, "type": "LBM_Model_Loader", "pos": [0, 0], "size": [320, 220],
      "inputs": [], "outputs": [{"name": "lbm_model", "type": "LBM_MODEL", "links": [1]}],
-     "widgets_values": ["LBM_depth.safetensors", "depth", "bf16", 0.005, false], "properties": {}},
+     "widgets_values": ["LBM_depth.safetensors", "depth", "bf16", false, "auto (try mirror, fall back)"], "properties": {}},
     {"id": 2, "type": "LoadImage", "pos": [0, 260], "size": [320, 220],
      "inputs": [], "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [2]}],
      "widgets_values": ["example.png"], "properties": {}},
@@ -13,7 +13,7 @@
                 {"name": "image", "type": "IMAGE", "link": 2}],
      "outputs": [{"name": "raw", "type": "IMAGE", "links": [3]},
                  {"name": "post_processed", "type": "IMAGE", "links": [4]}],
-     "widgets_values": [28, 0.1], "properties": {}},
+     "widgets_values": ["depth", 28], "properties": {}},
     {"id": 4, "type": "LBM_Depth_Visualizer", "pos": [800, 50], "size": [320, 180],
      "inputs": [{"name": "depth_image", "type": "IMAGE", "link": 3}],
      "outputs": [{"name": "image", "type": "IMAGE", "links": [5]}],
