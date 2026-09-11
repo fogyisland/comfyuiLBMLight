@@ -1,8 +1,7 @@
 """Core modules for ComfyUI-LBM-Pro.
 
 Importing this package does NOT eagerly load `model_factory` because that
-module imports the original `lbm` package, which has a transitive
-relative-import bug (see lbm/models/embedders/latents_concat/...). Nodes
+module is heavy (it builds the LBM solver graph on first import). Nodes
 that need `build_lbm_model`/`load_lbm_checkpoint` should import them
 directly from `lbm_core.model_factory`.
 """

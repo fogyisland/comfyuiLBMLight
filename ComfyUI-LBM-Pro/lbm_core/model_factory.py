@@ -233,7 +233,12 @@ def load_lbm_checkpoint(
     """
     from comfy.utils import load_torch_file
 
-    sd = load_torch_file(ckpt_path, device=device, safe_load=True)
+    import inspect
+    _sig = inspect.signature(load_torch_file)
+    if "safe_load" in _sig.parameters:
+        sd = load_torch_file(ckpt_path, device=device, safe_load=True)
+    else:
+        sd = load_torch_file(ckpt_path, device=device)
     key_index = _build_key_index(sd.keys())
 
     model_params = dict(model.named_parameters())

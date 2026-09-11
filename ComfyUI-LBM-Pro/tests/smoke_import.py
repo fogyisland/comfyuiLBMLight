@@ -6,6 +6,7 @@ Without ComfyUI: only `lbm_light_preset` and `lbm_compare_grid` and the
 visualizer nodes import OK; the rest require `comfy.*`.
 """
 import sys
+import traceback
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,6 +39,10 @@ COMFYUI_MODULES = [
     "nodes.lbm_batch_processor",
 ]
 
+# Names that indicate a "ComfyUI is missing" import failure rather than a
+# genuine bug in the node module. Only these get the SKIP treatment.
+_COMFYUI_MODULE_NAMES = {"comfy", "folder_paths", "comfy_execution", "comfy_extras"}
+
 
 def main() -> int:
     failed = []
@@ -54,8 +59,13 @@ def main() -> int:
             __import__(mod)
             print(f"OK  {mod}")
         except ImportError as e:
-            # ComfyUI is optional for import-time check; only fail on real errors
-            print(f"SKIP {mod} (ComfyUI not installed): {e}")
+            missing = e.name if hasattr(e, "name") else None
+            if missing in _COMFYUI_MODULE_NAMES or "comfy" in str(e):
+                print(f"SKIP {mod} (ComfyUI not installed): {e}")
+            else:
+                print(f"FAIL {mod}: ImportError not related to ComfyUI: {e}")
+                traceback.print_exc()
+                failed.append(mod)
         except Exception as e:
             print(f"FAIL {mod}: {type(e).__name__}: {e}")
             failed.append(mod)

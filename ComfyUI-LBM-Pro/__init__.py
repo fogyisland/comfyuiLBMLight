@@ -27,15 +27,6 @@ _NODE_MODULES = {
 _LOADED: dict[str, dict] = {}
 
 
-def _load_module_map(key: str) -> tuple[str, str]:
-    """Map NODE_CLASS_MAPPINGS key to module path."""
-    if key == "NODE_CLASS_MAPPINGS":
-        return "class", "all"
-    if key == "NODE_DISPLAY_NAME_MAPPINGS":
-        return "display", "all"
-    raise AttributeError(key)
-
-
 def __getattr__(name: str):
     if name in ("NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"):
         kind = "NODE_CLASS_MAPPINGS" if name == "NODE_CLASS_MAPPINGS" else "NODE_DISPLAY_NAME_MAPPINGS"
