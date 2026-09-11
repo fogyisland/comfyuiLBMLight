@@ -244,8 +244,10 @@ def load_lbm_checkpoint(
     # legacy loader applied, then feed the result to
     # ``load_state_dict`` with ``strict=False`` (so missing keys —
     # e.g. ``vae_model.X`` not present in the checkpoint — don't
-    # raise) and ``assign=True`` (so unknown keys get dropped without
-    # being silently ignored at the model level).  We dedupe on the
+    # raise).  ``load_state_dict`` updates parameters in-place via
+    # ``param.data.copy_()``-style mechanics, preserving the
+    # ``Parameter`` object — equivalent to the prior per-param
+    # ``param.data = ...`` for inference use.  We dedupe on the
     # post-remap target so the first checkpoint key mapping to any
     # given model key wins, matching the prior ``_build_key_index``
     # behaviour.
