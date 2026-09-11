@@ -394,7 +394,12 @@ class BridgeSolver(InferenceCore):
                 device="cpu",
             )
             u = torch.sigmoid(u)
-            indices = (u * len(self.sampling_noise_scheduler.timesteps)).long()
+            # Defensive clamp: sigmoid(very-large-positive) can be 1.0,
+            # which would map to index == len(timesteps) (OOB).  Pin to
+            # the last valid index.
+            indices = (u * (len(self.sampling_noise_scheduler.timesteps) - 1)).long().clamp(
+                0, len(self.sampling_noise_scheduler.timesteps) - 1
+            )
             return self.sampling_noise_scheduler.timesteps[indices].to(device=device)
         # discrete
         idx_np = np.random.choice(
