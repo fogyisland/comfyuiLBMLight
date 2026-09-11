@@ -8,6 +8,7 @@ from comfy.utils import ProgressBar
 
 from lbm_core import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE, apply_tint
 from lbm_core.presets import PRESETS
+from nodes.lbm_model_loader import resolve_lbm_device
 
 
 def _normalize_mask(mask: torch.Tensor) -> torch.Tensor:
@@ -85,7 +86,7 @@ class LBM_Batch_Processor:
 
         solver = lbm_model["model"]
         dtype = lbm_model["dtype"]
-        device_capture = lbm_model["device"]
+        device_capture = resolve_lbm_device(lbm_model)
 
         sigma = float(light_preset.get("bridge_noise_sigma", 0.005))
         # N6: chunk the batch so we never feed more than ``max_batch``

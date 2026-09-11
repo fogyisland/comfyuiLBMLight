@@ -330,7 +330,18 @@ def test_decode_latents_to_pixels_accepts_jitter_override():
 # ---------------------------------------------------------------------------
 # N5 / N6 / N12 — LBM_Batch_Processor polish
 # ---------------------------------------------------------------------------
-def test_batch_processor_chunks_when_over_max(monkeypatch):
+def _stub_folder_paths(monkeypatch, tmp_path=None):
+    """Inject a fake ``folder_paths`` module so lbm_model_loader imports."""
+    import sys
+    import types
+    if tmp_path is None:
+        tmp_path = "/tmp"
+    fake_folder_paths = types.ModuleType("folder_paths")
+    fake_folder_paths.get_folder_paths = lambda name: [tmp_path]
+    monkeypatch.setitem(sys.modules, "folder_paths", fake_folder_paths)
+
+
+def test_batch_processor_chunks_when_over_max(monkeypatch, tmp_path):
     """N6: when batch size > max_batch, the processor must split
     into chunks and concatenate the results.
 
@@ -341,6 +352,8 @@ def test_batch_processor_chunks_when_over_max(monkeypatch):
     import sys
 
     _stub_comfy(monkeypatch)
+    _stub_folder_paths(monkeypatch, str(tmp_path))
+    sys.modules.pop("nodes.lbm_model_loader", None)
     sys.modules.pop("nodes.lbm_batch_processor", None)
     from nodes.lbm_batch_processor import LBM_Batch_Processor
 
@@ -394,11 +407,13 @@ def test_batch_processor_chunks_when_over_max(monkeypatch):
     assert out[0].shape[0] == 7
 
 
-def test_batch_processor_rejects_empty_batch(monkeypatch):
+def test_batch_processor_rejects_empty_batch(monkeypatch, tmp_path):
     """N12: an empty batch must raise ValueError."""
     import sys
 
     _stub_comfy(monkeypatch)
+    _stub_folder_paths(monkeypatch, str(tmp_path))
+    sys.modules.pop("nodes.lbm_model_loader", None)
     sys.modules.pop("nodes.lbm_batch_processor", None)
     from nodes.lbm_batch_processor import LBM_Batch_Processor
 
@@ -418,11 +433,13 @@ def test_batch_processor_rejects_empty_batch(monkeypatch):
         node.process_batch(lbm_model, torch.zeros(0, 16, 16, 3), steps=2)
 
 
-def test_batch_processor_has_mask_widget(monkeypatch):
+def test_batch_processor_has_mask_widget(monkeypatch, tmp_path):
     """N5: the mask input must be exposed on the node's INPUT_TYPES."""
     import sys
 
     _stub_comfy(monkeypatch)
+    _stub_folder_paths(monkeypatch, str(tmp_path))
+    sys.modules.pop("nodes.lbm_model_loader", None)
     sys.modules.pop("nodes.lbm_batch_processor", None)
     from nodes.lbm_batch_processor import LBM_Batch_Processor
 
@@ -502,7 +519,7 @@ def test_compare_grid_tile_mode_stacks_frames():
 # ---------------------------------------------------------------------------
 # N2 — Depth/Normal Pro refuses a model cached for a different task
 # ---------------------------------------------------------------------------
-def test_depth_normal_pro_rejects_wrong_task(monkeypatch):
+def test_depth_normal_pro_rejects_wrong_task(monkeypatch, tmp_path):
     """A model cached for task='depth' must NOT be usable with task='normal'.
 
     ``nodes.lbm_depth_normal_pro`` imports ``comfy.model_management``
@@ -512,7 +529,10 @@ def test_depth_normal_pro_rejects_wrong_task(monkeypatch):
     import sys
 
     _stub_comfy(monkeypatch)
-    # Force a fresh import of the module under test.
+    _stub_folder_paths(monkeypatch, str(tmp_path))
+    # Force a fresh import of the loaders (which need folder_paths)
+    # and the module under test.
+    sys.modules.pop("nodes.lbm_model_loader", None)
     sys.modules.pop("nodes.lbm_depth_normal_pro", None)
     from nodes.lbm_depth_normal_pro import LBM_DepthNormal_Pro
 

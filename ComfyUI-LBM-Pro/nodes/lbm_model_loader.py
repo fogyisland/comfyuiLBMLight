@@ -45,7 +45,34 @@ _PRECISION_MAP = {
     "fp32": torch.float32,
     "bf16": torch.bfloat16,
     "fp16": torch.float16,
+    # PA9: "auto" lets ComfyUI resolve bf16/fp16/fp32 from the
+    # detected hardware.  The literal string is passed through to
+    # the model loader, which interprets "auto" as "pick the best
+    # dtype for this GPU" — bf16 on Ampere+, fp16 on Turing,
+    # fp32 otherwise.
+    "auto": "auto",
 }
+
+
+def resolve_lbm_device(lbm_model: dict) -> torch.device:
+    """Return the device this LBM model should run on, lazily.
+
+    N10: device resolution is *lazy* — we never capture the device at
+    load time, because ComfyUI's ``get_torch_device()`` may return a
+    different value mid-session (e.g. after ``soft_empty_cache`` or a
+    manual device switch).  The model-loader entry stores the
+    ``resolve_device`` callable; we invoke it on every call.
+
+    Falls back to ``mm.get_torch_device()`` for callers that pass a
+    hand-built ``lbm_model`` dict (used by tests) without the
+    callable.
+    """
+    resolver = lbm_model.get("resolve_device")
+    if callable(resolver):
+        result = resolver()
+        return result if isinstance(result, torch.device) else torch.device(result)
+    import comfy.model_management as mm
+    return mm.get_torch_device()
 
 
 def _scan_models() -> list[str]:
@@ -151,7 +178,7 @@ class LBM_Model_Loader:
                     {"default": "LBM_relighting.safetensors"},
                 ),
                 "task": (["relighting", "depth", "normal"], {"default": "relighting"}),
-                "precision": (["fp32", "bf16", "fp16"], {"default": "bf16"}),
+                "precision": (["auto", "fp32", "bf16", "fp16"], {"default": "auto"}),
             },
             "optional": {
                 "bridge_noise_sigma": (
@@ -182,28 +209,63 @@ class LBM_Model_Loader:
         force_reload: bool = False,
         mirror: str = "auto (try mirror, fall back)",
     ) -> tuple[dict]:
-        dtype = _PRECISION_MAP[precision]
-        cache_key = f"{model_name}|{task}|{precision}|{mirror}"
+        # PA9: "auto" selects bf16 / fp16 / fp32 from the detected GPU
+        # at load time.  Once the dtype is chosen the cache key is
+        # stable, so a subsequent force_reload with a different GPU
+        # produces a fresh entry.
+        resolved_precision = _resolve_auto_precision(precision)
+        dtype = _PRECISION_MAP[resolved_precision]
+
+        cache_key = f"{model_name}|{task}|{resolved_precision}|{mirror}"
         if force_reload:
             LBMModelCache.unload(cache_key)
 
         def _loader():
             ckpt = _resolve_checkpoint(model_name, task, mirror)
             model = build_lbm_model(task, dtype, bridge_noise_sigma)
-            device = mm.get_torch_device()
             offload = mm.unet_offload_device()
             load_lbm_checkpoint(model, ckpt, dtype, offload)
             mm.soft_empty_cache()
+            # N10: store the resolver, not a snapshot.  The cache
+            # entry now holds a callable that re-queries ComfyUI on
+            # every inference call so the device follows the live
+            # configuration rather than a stale load-time value.
             return {
                 "model": model,
                 "dtype": dtype,
                 "task": task,
                 "ckpt": ckpt,
-                "device": device,
+                "resolve_device": mm.get_torch_device,
+                "device": mm.get_torch_device(),
             }
 
         entry = LBMModelCache.get_or_load(cache_key, _loader)
         return (entry,)
+
+
+def _resolve_auto_precision(precision: str) -> str:
+    """Materialise ``"auto"`` into a concrete precision string.
+
+    Decision tree:
+      * bf16 if the active device supports it (Ampere+ — CC ≥ 8.0).
+      * fp16 on older CUDA (Turing — CC 7.x).
+      * fp32 as the safe fallback (CPU, unknown GPU, etc.).
+    """
+    if precision != "auto":
+        return precision
+    try:
+        device = mm.get_torch_device()
+    except Exception:
+        return "fp32"
+    if device.type != "cuda":
+        return "fp32"
+    try:
+        major, _minor = torch.cuda.get_device_capability(device)
+    except Exception:
+        return "fp32"
+    if major >= 8:
+        return "bf16"
+    return "fp16"
 
 
 NODE_CLASS_MAPPINGS = {

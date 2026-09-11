@@ -7,6 +7,7 @@ import comfy.model_management as mm
 from comfy.utils import ProgressBar
 
 from lbm_core import LBM_MODEL_TYPE
+from nodes.lbm_model_loader import resolve_lbm_device
 
 
 class LBM_DepthNormal_Pro:
@@ -47,6 +48,10 @@ class LBM_DepthNormal_Pro:
         bridge_noise_sigma: float = 0.1,
         mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        # N12: empty batch is a hard error.
+        if image.shape[0] == 0:
+            raise ValueError("Empty batch (B == 0); need at least one image")
+
         # N2: refuse to run a model cached for a different task.
         # A relighting model loaded into this node would produce
         # plausible-looking but wrong outputs.
@@ -59,7 +64,7 @@ class LBM_DepthNormal_Pro:
             )
         solver = lbm_model["model"]
         dtype = lbm_model["dtype"]
-        device = lbm_model["device"]
+        device = resolve_lbm_device(lbm_model)
 
         x = image.clone().permute(0, 3, 1, 2).to(device, dtype) * 2 - 1
         batch = {solver.schedule.anchor_field: x}
@@ -69,7 +74,10 @@ class LBM_DepthNormal_Pro:
                 m = m.unsqueeze(0).unsqueeze(0)
             elif m.ndim == 3:
                 m = m.unsqueeze(0)
-            batch[solver.schedule.mask_field or "mask"] = m.to(device, dtype)
+            # N11: keep the mask in fp32 — the bridge solver expects a
+            # fp32 mask channel; casting to the model dtype would lose
+            # precision in the masked regions.
+            batch[solver.schedule.mask_field or "mask"] = m.to(device, dtype=torch.float32)
 
         solver.codec.to(device)
         anchor_key = solver.schedule.anchor_field

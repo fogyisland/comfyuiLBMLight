@@ -12,6 +12,7 @@ from comfy.utils import ProgressBar
 
 from lbm_core import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE, apply_tint
 from lbm_core.presets import PRESETS
+from nodes.lbm_model_loader import resolve_lbm_device
 
 
 class LBM_Relighting_Pro:
@@ -47,6 +48,12 @@ class LBM_Relighting_Pro:
         light_preset: dict | None = None,
         mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor]:
+        # N12: empty batch is a hard error — there is no reasonable
+        # default to fall back to and silently returning an empty
+        # tensor would surprise downstream nodes.
+        if image.shape[0] == 0:
+            raise ValueError("Empty batch (B == 0); need at least one image")
+
         if light_preset is None:
             wp = PRESETS["warm_neutral"]
             light_preset = {
@@ -59,7 +66,7 @@ class LBM_Relighting_Pro:
 
         solver = lbm_model["model"]
         dtype = lbm_model["dtype"]
-        device = lbm_model["device"]
+        device = resolve_lbm_device(lbm_model)
 
         x = image.clone().permute(0, 3, 1, 2).to(device, dtype) * 2 - 1
         batch = {solver.schedule.anchor_field: x}
@@ -69,7 +76,10 @@ class LBM_Relighting_Pro:
                 m = m.unsqueeze(0).unsqueeze(0)
             elif m.ndim == 3:
                 m = m.unsqueeze(0)
-            batch[solver.schedule.mask_field or "mask"] = m.to(device, dtype)
+            # N11: keep the mask in fp32; the bridge solver expects a
+            # fp32 mask channel so a hard-cast to the model dtype
+            # would lose 1-bit precision in the masked regions.
+            batch[solver.schedule.mask_field or "mask"] = m.to(device, dtype=torch.float32)
 
         solver.codec.to(device)
         anchor_key = solver.schedule.anchor_field
