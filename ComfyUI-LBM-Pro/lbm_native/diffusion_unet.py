@@ -56,7 +56,17 @@ class _BaseDiffusersUNet(InferenceCore):
         return torch.cat([sample, tile_stack.to(sample.dtype)], dim=1)
 
     def hard_freeze(self) -> None:
-        super().hard_freeze()
+        """Disable gradients on every parameter and switch to eval mode.
+
+        Iterates ``self.parameters()`` explicitly so the behaviour is
+        independent of the MRO chain — the diffusers parent classes
+        do not override ``hard_freeze`` but relying on
+        ``super().hard_freeze()`` would silently break if any future
+        mix-in added its own freeze hook.
+        """
+        self.eval()
+        for param in self.parameters():
+            param.requires_grad_(False)
 
 
 class PlainUNet2D(_BaseDiffusersUNet, UNet2DModel):

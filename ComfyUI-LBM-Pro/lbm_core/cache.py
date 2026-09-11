@@ -46,11 +46,24 @@ class LBMModelCache:
         threads hitting the same key while the loader is in flight
         both observe the same ``Future`` — the loader is invoked
         exactly once.
+
+        Side effect: every visit scans the cache for entries whose
+        TTL has elapsed and pops them so a long-lived process does
+        not accumulate stale model handles (which would otherwise
+        only get released when a fresh loader took the same key).
         """
-        # Cache hit (cheap, common case).
+        # Cache hit (cheap, common case) plus opportunistic sweep of
+        # expired entries — keeping the dict bounded under a busy
+        # multi-model workflow.
         with cls._lock:
-            entry = cls._cache.get(key)
             now = time.monotonic()
+            expired_keys = [
+                k for k, e in cls._cache.items()
+                if (now - e["last_used"]) >= ttl_seconds
+            ]
+            for ek in expired_keys:
+                cls._cache.pop(ek, None)
+            entry = cls._cache.get(key)
             if entry is not None and (now - entry["last_used"]) < ttl_seconds:
                 entry["last_used"] = now
                 return entry["model"]

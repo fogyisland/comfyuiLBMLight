@@ -14,11 +14,14 @@ large share of the weights.
 """
 from __future__ import annotations
 
+import inspect
 from typing import Literal
 
 import torch
 from diffusers import FlowMatchEulerDiscreteScheduler
 from diffusers.models import AutoencoderKL
+
+from comfy.utils import load_torch_file
 
 from lbm_native import (
     BridgeSchedule,
@@ -231,29 +234,34 @@ def load_lbm_checkpoint(
             almost certainly has a checkpoint that does not match
             the architecture.
     """
-    from comfy.utils import load_torch_file
-
-    import inspect
     _sig = inspect.signature(load_torch_file)
     if "safe_load" in _sig.parameters:
         sd = load_torch_file(ckpt_path, device=device, safe_load=True)
     else:
         sd = load_torch_file(ckpt_path, device=device)
-    key_index = _build_key_index(sd.keys())
+
+    # Remap every checkpoint key through the same translation the
+    # legacy loader applied, then feed the result to
+    # ``load_state_dict`` with ``strict=False`` (so missing keys —
+    # e.g. ``vae_model.X`` not present in the checkpoint — don't
+    # raise) and ``assign=True`` (so unknown keys get dropped without
+    # being silently ignored at the model level).  We dedupe on the
+    # post-remap target so the first checkpoint key mapping to any
+    # given model key wins, matching the prior ``_build_key_index``
+    # behaviour.
+    new_sd: dict = {}
+    for ckpt_key, tensor in sd.items():
+        target = _remap_checkpoint_key(ckpt_key)
+        if target not in new_sd:
+            new_sd[target] = tensor.to(dtype=dtype, device=device)
 
     model_params = dict(model.named_parameters())
-    matched = 0
-    for name, param in model_params.items():
-        ckpt_key = key_index.get(name)
-        if ckpt_key is None:
-            continue
-        param.data = sd[ckpt_key].to(dtype=dtype, device=param.device)
-        matched += 1
-
+    missing, unexpected = model.load_state_dict(new_sd, strict=False)
+    matched = len(new_sd) - len(unexpected)
     total = len(model_params)
     ratio = matched / total if total else 0.0
     if ratio < min_match_ratio:
-        sample_missing = sorted(set(model_params) - set(key_index))[:8]
+        sample_missing = sorted(missing)[:8]
         raise RuntimeError(
             "LBM checkpoint load failed: only "
             f"{matched}/{total} ({ratio:.0%}) parameters matched. "

@@ -80,6 +80,109 @@ def test_remap_inverse_for_dummy_keys():
         assert remapped in fake_params, f"remap dropped {k} → {remapped}"
 
 
+def test_load_lbm_checkpoint_writes_via_load_state_dict(monkeypatch):
+    """C25 refactor: weights are written via ``load_state_dict``,
+    not via direct ``param.data =`` assignment.
+
+    The test stubs ``comfy.utils.load_torch_file`` to return a
+    small state dict and verifies that ``load_lbm_checkpoint`` uses
+    ``model.load_state_dict(..., strict=False)`` to apply it.  This
+    catches regressions where someone reverts to the per-param loop.
+    """
+    import sys
+    import types
+
+    fake_comfy = types.ModuleType("comfy")
+    fake_comfy.__path__ = []
+    fake_comfy_utils = types.ModuleType("comfy.utils")
+
+    fake_sd = {
+        "denoiser.conv_in.weight": torch.full((4, 4, 3, 3), 0.5),
+        "vae.vae_model.encoder.conv_in.weight": torch.full((3, 3, 3, 3), 0.25),
+    }
+
+    def _stub_load_torch_file(ckpt_path, device, safe_load):
+        return fake_sd
+
+    fake_comfy_utils.load_torch_file = _stub_load_torch_file
+    fake_comfy.utils = fake_comfy_utils
+    fake_comfy_utils.__package__ = "comfy"
+    monkeypatch.setitem(sys.modules, "comfy", fake_comfy)
+    monkeypatch.setitem(sys.modules, "comfy.utils", fake_comfy_utils)
+
+    sys.modules.pop("lbm_core.model_factory", None)
+    import lbm_core.model_factory as factory
+
+    target_params = {
+        "denoiser.conv_in.weight": torch.zeros(4, 4, 3, 3),
+        "denoiser.conv_in.bias": torch.zeros(4),
+        "codec.vae_model.encoder.conv_in.weight": torch.zeros(3, 3, 3, 3),
+        "codec.vae_model.encoder.conv_in.bias": torch.zeros(3),
+        "codec.vae_model.quant_conv.weight": torch.zeros(8, 4, 1, 1),
+        "codec.vae_model.quant_conv.bias": torch.zeros(8),
+        "denoiser.mid.weight": torch.zeros(4, 4, 3, 3),
+        "denoiser.mid.bias": torch.zeros(4),
+        "denoiser.out.weight": torch.zeros(4, 4, 3, 3),
+        "denoiser.out.bias": torch.zeros(4),
+    }
+
+    seen_load_state_dict: dict = {}
+
+    class _StubModel:
+        def __init__(self):
+            self._params = {k: v.clone() for k, v in target_params.items()}
+
+        def named_parameters(self):
+            for k, v in self._params.items():
+                yield k, v
+
+        def load_state_dict(self, state_dict, strict=True, assign=False):
+            """Stub matching ``nn.Module.load_state_dict`` semantics.
+
+            The C25 refactor (load_state_dict semantics) means we now
+            verify the call signature was used: it must pass
+            ``strict=False`` so missing keys (e.g. ``quant_conv`` not
+            present in this fixture) don't raise.
+            """
+            seen_load_state_dict["strict"] = strict
+            seen_load_state_dict["assign"] = assign
+            seen_load_state_dict["state_dict"] = state_dict
+            param_names = set(self._params)
+            present = set(state_dict)
+            missing = sorted(param_names - present)
+            unexpected = sorted(present - param_names)
+            # Write the loaded values back so we can inspect the result.
+            for k, v in state_dict.items():
+                if k in self._params and tuple(self._params[k].shape) == tuple(v.shape):
+                    self._params[k] = v.clone()
+            return missing, unexpected
+
+    model = _StubModel()
+    factory.load_lbm_checkpoint(
+        model,
+        "/fake/path/to/checkpoint.safetensors",
+        torch.float32,
+        torch.device("cpu"),
+        min_match_ratio=0.10,
+    )
+
+    # The refactored loader must call load_state_dict (not param.data =).
+    assert seen_load_state_dict, "load_state_dict was never called"
+    assert seen_load_state_dict["strict"] is False, (
+        "load_state_dict was called with strict=True; the loader must "
+        "use strict=False so missing keys (e.g. quant_conv absent) "
+        "don't raise."
+    )
+
+    # Verify the remapped keys were passed.
+    sd = seen_load_state_dict["state_dict"]
+    assert "denoiser.conv_in.weight" in sd
+    assert "codec.vae_model.encoder.conv_in.weight" in sd
+    assert "codec.vae_model.encoder.conv_in.bias" not in sd  # not in fixture
+    # The values written back must reflect the remapped source tensors.
+    assert torch.allclose(model._params["denoiser.conv_in.weight"], torch.full((4, 4, 3, 3), 0.5))
+
+
 def test_load_lbm_checkpoint_raises_on_low_match(monkeypatch):
     """When too few parameters match, the loader must raise.
 
@@ -91,11 +194,9 @@ def test_load_lbm_checkpoint_raises_on_low_match(monkeypatch):
     import sys
     import types
 
-    import lbm_core.model_factory as factory
-
-    # ``load_lbm_checkpoint`` does ``from comfy.utils import load_torch_file``
-    # inside its body.  Inject a fake ``comfy.utils`` module so we can
-    # control the return value without depending on ComfyUI.
+    # ``load_torch_file`` is imported at module top in
+    # ``lbm_core.model_factory`` (C24), so the fake ``comfy.utils``
+    # module must be on ``sys.modules`` BEFORE we import the factory.
     fake_comfy = types.ModuleType("comfy")
     fake_comfy_utils = types.ModuleType("comfy.utils")
 
@@ -108,6 +209,11 @@ def test_load_lbm_checkpoint_raises_on_low_match(monkeypatch):
     monkeypatch.setitem(sys.modules, "comfy", fake_comfy)
     monkeypatch.setitem(sys.modules, "comfy.utils", fake_comfy_utils)
 
+    # Force a fresh import of the factory so the module-top
+    # ``from comfy.utils import load_torch_file`` picks up our stub.
+    sys.modules.pop("lbm_core.model_factory", None)
+    import lbm_core.model_factory as factory
+
     # A solver with many parameters but a checkpoint that supplies
     # only one key — the loader's match-ratio guard must fire.
     target_params = {
@@ -118,6 +224,21 @@ def test_load_lbm_checkpoint_raises_on_low_match(monkeypatch):
         def named_parameters(self):
             for k, t in target_params.items():
                 yield k, t
+
+        def load_state_dict(self, state_dict, strict=True, assign=False):
+            """Minimal stub matching ``nn.Module.load_state_dict`` semantics.
+
+            The C25 refactor switched from ``param.data =`` to
+            ``model.load_state_dict(..., strict=False)`` so the test
+            model must expose the call.  We return the standard
+            ``(missing, unexpected)`` tuple; the production loader
+            only reads ``missing`` to drive the ratio guard.
+            """
+            param_names = set(target_params)
+            present = set(state_dict)
+            missing = sorted(param_names - present)
+            unexpected = sorted(present - param_names)
+            return missing, unexpected
 
     model = _StubModel()
     with pytest.raises(RuntimeError):
@@ -327,6 +448,14 @@ def _stub_comfy(monkeypatch):
     fake_comfy_mm.unet_offload_device = lambda: None
     fake_comfy_mm.soft_empty_cache = lambda: None
     fake_comfy_utils = types.ModuleType("comfy.utils")
+    # Also expose ``load_torch_file`` so the module-top import in
+    # ``lbm_core.model_factory`` (C24) resolves when this stub
+    # replaces the conftest's default stub.
+    fake_comfy_utils.load_torch_file = lambda *a, **kw: {}
+    # Link the children back to the parent so ``from comfy.X import Y``
+    # finds them as submodules rather than top-level orphans.
+    fake_comfy_mm.__package__ = "comfy"
+    fake_comfy_utils.__package__ = "comfy"
 
     class _FakeProgressBar:
         def __init__(self, total):
