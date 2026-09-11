@@ -131,7 +131,6 @@ def _assemble_scheduler() -> FlowMatchEulerDiscreteScheduler:
 def build_lbm_model(
     task: Literal["relighting", "depth", "normal"],
     dtype: torch.dtype,
-    bridge_noise_sigma: float,
 ) -> BridgeSolver:
     """Construct a solver wired with the architecture for ``task``."""
     if task not in _TASK_SCHEDULE:
@@ -143,7 +142,7 @@ def build_lbm_model(
         timestep_policy="discrete",
         discrete_timesteps=[250, 500, 750, 1000],
         discrete_weights=spec["discrete_weights"],
-        noise_jitter=bridge_noise_sigma,
+        noise_jitter=spec["noise_jitter"],
     )
     return BridgeSolver(
         schedule=schedule,

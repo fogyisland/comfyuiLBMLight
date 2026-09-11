@@ -88,7 +88,6 @@ class LBM_Batch_Processor:
         dtype = lbm_model["dtype"]
         device_capture = resolve_lbm_device(lbm_model)
 
-        sigma = float(light_preset.get("bridge_noise_sigma", 0.005))
         # N6: chunk the batch so we never feed more than ``max_batch``
         # frames at once to the solver.  This caps VRAM for large
         # batches and keeps the ProgressBar honest.
@@ -109,7 +108,6 @@ class LBM_Batch_Processor:
                 mask=chunk_mask,
                 steps=steps,
                 light_preset=light_preset,
-                sigma=sigma,
                 pbar=pbar,
                 step_offset=start * steps,
             )
@@ -129,7 +127,6 @@ class LBM_Batch_Processor:
         mask: torch.Tensor | None,
         steps: int,
         light_preset: dict,
-        sigma: float,
         pbar: ProgressBar,
         step_offset: int = 0,
     ) -> torch.Tensor:
@@ -155,7 +152,6 @@ class LBM_Batch_Processor:
             z=z,
             num_steps=steps,
             conditioner_inputs=batch,
-            noise_jitter=sigma,
             progress_cb=_cb,
         ).clamp(-1, 1)
 

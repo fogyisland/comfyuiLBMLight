@@ -34,15 +34,10 @@ class LBM_Relighting_Pro:
                 "mask": ("MASK",),
             },
         }
-    # PA25: LBM_Relighting_Pro does NOT expose a `bridge_noise_sigma`
-    # widget even though LBM_DepthNormal_Pro does.  The relighting
-    # node consumes a ``LIGHT_PRESET`` dict whose ``bridge_noise_sigma``
-    # field controls the noise level — adding a separate widget would
-    # create two sources of truth for the same parameter.  When the
-    # preset is built, ``LBM_Light_Preset.build`` copies the preset's
-    # own ``bridge_noise_sigma`` (per-preset calibration, e.g.
-    # night_blue=0.020 vs overcast=0.003) into the payload, so the
-    # widget-asymmetry is by design rather than a bug.
+    # Inference is deterministic — noise injection happens in the
+    # training loop (``_mix_bridge`` consumes ``schedule.noise_jitter``),
+    # not at decode time, so neither this node nor Depth/Normal Pro
+    # exposes a `bridge_noise_sigma` widget.
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
@@ -96,16 +91,11 @@ class LBM_Relighting_Pro:
         solver.codec.cpu()
         solver.to(device)
 
-        sigma = float(light_preset.get("bridge_noise_sigma", 0.005))
-        # Pass the override as a per-call argument instead of mutating
-        # solver.schedule.noise_jitter.  Mutating the shared schedule
-        # is racy when two nodes reuse the same model cache entry.
         pbar = ProgressBar(steps)
         out = solver.decode_latents_to_pixels(
             z=z,
             num_steps=steps,
             conditioner_inputs=batch,
-            noise_jitter=sigma,
             progress_cb=lambda completed, _total: pbar.update_absolute(completed, steps),
         ).clamp(-1, 1)
 

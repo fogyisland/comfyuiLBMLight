@@ -214,20 +214,15 @@ class BridgeSolver(InferenceCore):
         conditioner_inputs: Optional[Dict[str, Any]] = None,
         max_samples: Optional[int] = None,
         progress_cb: Optional[Callable[[int, int], None]] = None,
-        noise_jitter: Optional[float] = None,
     ) -> torch.Tensor:
         """Integrate the bridge ODE from ``z`` to a pixel image.
 
         ``z`` is assumed to be a latent batch (B, C, H/8, W/8).  The
         scheduler is reconfigured in-place to span ``num_steps``
         Euler steps; the callback receives ``(completed, total)``.
-
-        ``noise_jitter`` overrides ``schedule.noise_jitter`` for this
-        call only, without mutating the schedule.  This keeps the
-        solver safe to share across threads when nodes want to apply
-        a per-call override.  Inference is deterministic — the
-        override is retained on the signature for backward
-        compatibility but is not applied at decode time.
+        Inference is deterministic — noise injection lives in the
+        training loop (``_mix_bridge`` consumes
+        ``schedule.noise_jitter``), not at decode time.
         """
         # Reconfigure the scheduler to span ``num_steps`` Euler steps
         # using its built-in training-timestep schedule.  Passing

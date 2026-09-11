@@ -4,6 +4,10 @@ Each preset is a (rgb_tint, intensity, bridge_noise_sigma) tuple that
 emulates a lighting style by post-processing the LBM output. The model
 itself does not consume external lighting, so these are visual
 approximations — see design doc §6.2 for rationale.
+
+Currently, the model factory translates ``bridge_noise_sigma`` into
+``BridgeSchedule.noise_jitter`` for training; inference is
+deterministic and does not consume this value at decode time.
 """
 from __future__ import annotations
 

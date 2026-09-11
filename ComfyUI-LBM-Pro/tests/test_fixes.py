@@ -315,16 +315,28 @@ def test_bridge_solver_sample_survives_pickle_roundtrip():
 
 
 # ---------------------------------------------------------------------------
-# noise_jitter override on decode_latents_to_pixels
+# noise_jitter override on decode_latents_to_pixels — REMOVED (F1)
+#
+# Inference is deterministic — noise injection lives in the training
+# loop (``_mix_bridge`` consumes ``schedule.noise_jitter``), not at
+# decode time.  The signature no longer carries a ``noise_jitter``
+# kwarg; the runtime smoke check below verifies it.
 # ---------------------------------------------------------------------------
-def test_decode_latents_to_pixels_accepts_jitter_override():
-    """The signature must allow a per-call override without mutating the schedule."""
+def test_decode_latents_to_pixels_no_jitter_override():
+    """The signature must NOT expose a per-call noise_jitter override.
+
+    F1: the per-call ``noise_jitter`` kwarg was a dead surface — the
+    solver never consumed the override at decode time.  Removing it
+    closes a confusing public API rather than papering over it.
+    """
     import inspect
     from lbm_native import BridgeSolver
 
     sig = inspect.signature(BridgeSolver.decode_latents_to_pixels)
-    assert "noise_jitter" in sig.parameters
-    assert sig.parameters["noise_jitter"].default is None
+    assert "noise_jitter" not in sig.parameters, (
+        "decode_latents_to_pixels still exposes a noise_jitter override; "
+        "inference is deterministic and the kwarg should be removed."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +384,7 @@ def test_batch_processor_chunks_when_over_max(monkeypatch, tmp_path):
         def cpu(self):
             return self
 
-        def decode_latents_to_pixels(self, z, num_steps, conditioner_inputs, noise_jitter, progress_cb=None):
+        def decode_latents_to_pixels(self, z, num_steps, conditioner_inputs, progress_cb=None):
             call_sizes.append(z.shape[0])
             if progress_cb is not None:
                 progress_cb(num_steps, num_steps)

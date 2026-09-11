@@ -26,10 +26,6 @@ class LBM_DepthNormal_Pro:
                 ),
             },
             "optional": {
-                "bridge_noise_sigma": (
-                    "FLOAT",
-                    {"default": 0.1, "min": 0.0, "max": 0.1, "step": 0.001},
-                ),
                 "mask": ("MASK",),
             },
         }
@@ -45,7 +41,6 @@ class LBM_DepthNormal_Pro:
         image: torch.Tensor,
         task: str,
         steps: int,
-        bridge_noise_sigma: float = 0.1,
         mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # N12: empty batch is a hard error.
@@ -90,7 +85,6 @@ class LBM_DepthNormal_Pro:
             z=z,
             num_steps=steps,
             conditioner_inputs=batch,
-            noise_jitter=float(bridge_noise_sigma),
             progress_cb=lambda completed, _total: pbar.update_absolute(completed, steps),
         ).clamp(-1, 1)
 

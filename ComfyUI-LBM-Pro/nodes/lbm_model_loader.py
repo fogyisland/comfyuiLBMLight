@@ -181,10 +181,6 @@ class LBM_Model_Loader:
                 "precision": (["auto", "fp32", "bf16", "fp16"], {"default": "auto"}),
             },
             "optional": {
-                "bridge_noise_sigma": (
-                    "FLOAT",
-                    {"default": 0.005, "min": 0.0, "max": 0.1, "step": 0.001},
-                ),
                 "force_reload": ("BOOLEAN", {"default": False}),
                 "mirror": (
                     list(_MIRROR_OPTIONS),
@@ -205,7 +201,6 @@ class LBM_Model_Loader:
         model_name: str,
         task: str,
         precision: str,
-        bridge_noise_sigma: float = 0.005,
         force_reload: bool = False,
         mirror: str = "auto (try mirror, fall back)",
     ) -> tuple[dict]:
@@ -222,7 +217,7 @@ class LBM_Model_Loader:
 
         def _loader():
             ckpt = _resolve_checkpoint(model_name, task, mirror)
-            model = build_lbm_model(task, dtype, bridge_noise_sigma)
+            model = build_lbm_model(task, dtype)
             offload = mm.unet_offload_device()
             load_lbm_checkpoint(model, ckpt, dtype, offload)
             mm.soft_empty_cache()
