@@ -38,9 +38,21 @@ class LBM_Depth_Visualizer:
     ) -> tuple[torch.Tensor]:
         if depth_image.ndim != 4:
             raise ValueError(f"Expected (B, H, W, C); got {depth_image.shape}")
+        c = depth_image.shape[-1]
+        if c not in (1, 3):
+            raise ValueError(
+                f"Depth image must have 1 or 3 channels; got {c} "
+                f"(shape {tuple(depth_image.shape)})"
+            )
         batch = depth_image.detach().cpu()
-        if batch.shape[-1] > 1:
-            batch = batch.mean(dim=-1, keepdim=False)
+        if c == 3:
+            # N18: when the input carries 3 channels (a colourised
+            # depth map or RGB triplets of a depth), use channel 0
+            # rather than averaging across RGB — averaging a colourised
+            # map destroys the colour information and produces muddy
+            # output.  Callers wanting the RGB-channel average should
+            # pre-process via a separate node.
+            batch = batch[..., 0]
         else:
             batch = batch.squeeze(-1)
         out_frames: list[np.ndarray] = []
