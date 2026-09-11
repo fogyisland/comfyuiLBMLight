@@ -17,7 +17,7 @@ All notable changes to ComfyUI-LBM-Pro are documented here.
 ### Tests
 - 85 tests passing (66 prior to the audit + 19 new tests across bridge inference, codec, loader, cache, aggregator, and node UX).
 
-## v0.1.2 — 2026-09-10
+## v0.1.2 — 2026-09-11
 
 ### Fixed
 - Hardening pass (cache lock, nan guard, progress bar, checkpoint key remap, race conditions).
