@@ -328,6 +328,111 @@ def test_decode_latents_to_pixels_accepts_jitter_override():
 
 
 # ---------------------------------------------------------------------------
+# N5 / N6 / N12 — LBM_Batch_Processor polish
+# ---------------------------------------------------------------------------
+def test_batch_processor_chunks_when_over_max(monkeypatch):
+    """N6: when batch size > max_batch, the processor must split
+    into chunks and concatenate the results.
+
+    The test stubs ``solver.decode_latents_to_pixels`` so we can
+    count how many times it is called and what batch sizes it
+    receives — the production decoder would require a real UNet.
+    """
+    import sys
+
+    _stub_comfy(monkeypatch)
+    sys.modules.pop("nodes.lbm_batch_processor", None)
+    from nodes.lbm_batch_processor import LBM_Batch_Processor
+
+    call_sizes: list[int] = []
+
+    class _StubSolver:
+        class _Schedule:
+            anchor_field = "source_image"
+            mask_field = None
+
+        schedule = _Schedule()
+
+        def to(self, *a, **kw):
+            return self
+
+        def cpu(self):
+            return self
+
+        def decode_latents_to_pixels(self, z, num_steps, conditioner_inputs, noise_jitter, progress_cb=None):
+            call_sizes.append(z.shape[0])
+            if progress_cb is not None:
+                progress_cb(num_steps, num_steps)
+            # Return a constant tensor in pixel space (3 channels) so
+            # the downstream permute + apply_tint path works without a
+            # real UNet / codec.
+            return torch.zeros(z.shape[0], 3, 16, 16)
+
+    class _StubCodec:
+        def to(self, *a, **kw):
+            return self
+
+        def cpu(self):
+            return self
+
+        def encode(self, x):
+            return torch.zeros(x.shape[0], 4, x.shape[2] // 8, x.shape[3] // 8)
+
+    solver = _StubSolver()
+    solver.codec = _StubCodec()
+
+    lbm_model = {
+        "model": solver,
+        "dtype": torch.float32,
+        "device": torch.device("cpu"),
+    }
+    images = torch.zeros(7, 16, 16, 3)
+    node = LBM_Batch_Processor()
+    out = node.process_batch(lbm_model, images, steps=2, max_batch=3)
+    # Three chunks: 3 + 3 + 1
+    assert sorted(call_sizes) == [1, 3, 3], f"unexpected chunk sizes: {call_sizes}"
+    assert out[0].shape[0] == 7
+
+
+def test_batch_processor_rejects_empty_batch(monkeypatch):
+    """N12: an empty batch must raise ValueError."""
+    import sys
+
+    _stub_comfy(monkeypatch)
+    sys.modules.pop("nodes.lbm_batch_processor", None)
+    from nodes.lbm_batch_processor import LBM_Batch_Processor
+
+    class _StubSolver:
+        class _Schedule:
+            anchor_field = "source_image"
+            mask_field = None
+        schedule = _Schedule()
+
+    lbm_model = {
+        "model": _StubSolver(),
+        "dtype": torch.float32,
+        "device": torch.device("cpu"),
+    }
+    node = LBM_Batch_Processor()
+    with pytest.raises(ValueError, match="Empty batch"):
+        node.process_batch(lbm_model, torch.zeros(0, 16, 16, 3), steps=2)
+
+
+def test_batch_processor_has_mask_widget(monkeypatch):
+    """N5: the mask input must be exposed on the node's INPUT_TYPES."""
+    import sys
+
+    _stub_comfy(monkeypatch)
+    sys.modules.pop("nodes.lbm_batch_processor", None)
+    from nodes.lbm_batch_processor import LBM_Batch_Processor
+
+    spec = LBM_Batch_Processor.INPUT_TYPES()
+    optional = spec.get("optional", {})
+    assert "mask" in optional, "LBM_Batch_Processor has no `mask` widget"
+    assert "max_batch" in optional, "LBM_Batch_Processor has no `max_batch` widget"
+
+
+# ---------------------------------------------------------------------------
 # nan/inf guard
 # ---------------------------------------------------------------------------
 def test_predict_clean_state_handles_nan_inputs():

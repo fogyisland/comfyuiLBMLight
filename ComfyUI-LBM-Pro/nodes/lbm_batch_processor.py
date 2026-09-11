@@ -10,6 +10,21 @@ from lbm_core import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE, apply_tint
 from lbm_core.presets import PRESETS
 
 
+def _normalize_mask(mask: torch.Tensor) -> torch.Tensor:
+    """Coerce a ComfyUI ``MASK`` tensor to ``(B, 1, H, W)`` float32.
+
+    Accepts 2-D ``(H, W)`` (one frame), 3-D ``(B, H, W)`` (multi-frame
+    mask), or 4-D ``(B, 1, H, W)`` (already correctly shaped).  The
+    output is left on CPU and in fp32 so the caller can move it to the
+    target device with the right dtype (N11 — keep the mask in fp32).
+    """
+    if mask.ndim == 2:
+        mask = mask.unsqueeze(0).unsqueeze(0)
+    elif mask.ndim == 3:
+        mask = mask.unsqueeze(1)
+    return mask.to(torch.float32)
+
+
 class LBM_Batch_Processor:
     """Process a batch of images with identical parameters (consistency)."""
 
@@ -23,6 +38,18 @@ class LBM_Batch_Processor:
             },
             "optional": {
                 "light_preset": (LIGHT_PRESET_TYPE,),
+                "mask": ("MASK",),
+                "max_batch": (
+                    "INT",
+                    {
+                        "default": 4,
+                        "min": 1,
+                        "max": 64,
+                        "tooltip": "Maximum frames per solver invocation. "
+                                   "Batches larger than this are split into "
+                                   "chunks and processed sequentially.",
+                    },
+                ),
             },
         }
 
@@ -37,7 +64,15 @@ class LBM_Batch_Processor:
         images: torch.Tensor,
         steps: int,
         light_preset: dict | None = None,
+        mask: torch.Tensor | None = None,
+        max_batch: int = 4,
     ) -> tuple[torch.Tensor]:
+        # N12: empty batch is a hard error — there is no reasonable
+        # default to fall back to and silently returning an empty
+        # tensor would surprise downstream nodes.
+        if images.shape[0] == 0:
+            raise ValueError("Empty batch (B == 0); need at least one image")
+
         if light_preset is None:
             wp = PRESETS["warm_neutral"]
             light_preset = {
@@ -50,10 +85,59 @@ class LBM_Batch_Processor:
 
         solver = lbm_model["model"]
         dtype = lbm_model["dtype"]
-        device = lbm_model["device"]
+        device_capture = lbm_model["device"]
 
+        sigma = float(light_preset.get("bridge_noise_sigma", 0.005))
+        # N6: chunk the batch so we never feed more than ``max_batch``
+        # frames at once to the solver.  This caps VRAM for large
+        # batches and keeps the ProgressBar honest.
+        bsz = images.shape[0]
+        max_batch = max(1, int(max_batch))
+        chunks: list[torch.Tensor] = []
+        pbar = ProgressBar(steps * bsz)
+        for start in range(0, bsz, max_batch):
+            end = min(start + max_batch, bsz)
+            chunk_imgs = images[start:end]
+            chunk_mask = mask[start:end] if mask is not None else None
+
+            out = self._run_chunk(
+                solver=solver,
+                dtype=dtype,
+                device=device_capture,
+                images=chunk_imgs,
+                mask=chunk_mask,
+                steps=steps,
+                light_preset=light_preset,
+                sigma=sigma,
+                pbar=pbar,
+                step_offset=start * steps,
+            )
+            chunks.append(out)
+
+        out = torch.cat(chunks, dim=0)
+        solver.cpu()
+        mm.soft_empty_cache()
+        return (out,)
+
+    def _run_chunk(
+        self,
+        solver,
+        dtype: torch.dtype,
+        device: torch.device,
+        images: torch.Tensor,
+        mask: torch.Tensor | None,
+        steps: int,
+        light_preset: dict,
+        sigma: float,
+        pbar: ProgressBar,
+        step_offset: int = 0,
+    ) -> torch.Tensor:
+        """Run one chunk through the solver and return the (B, H, W, C) output."""
         x = images.clone().permute(0, 3, 1, 2).to(device, dtype) * 2 - 1
         batch = {solver.schedule.anchor_field: x}
+        if mask is not None:
+            m = _normalize_mask(mask).to(device)
+            batch[solver.schedule.mask_field or "mask"] = m
 
         solver.codec.to(device)
         anchor_key = solver.schedule.anchor_field
@@ -61,23 +145,23 @@ class LBM_Batch_Processor:
         solver.codec.cpu()
         solver.to(device)
 
-        sigma = float(light_preset.get("bridge_noise_sigma", 0.005))
-        pbar = ProgressBar(steps)
+        def _cb(completed: int, _total: int) -> None:
+            # Translate chunk-local progress into global progress
+            # across all chunks in the batch.
+            pbar.update_absolute(step_offset + completed, step_offset + steps)
+
         out = solver.decode_latents_to_pixels(
             z=z,
             num_steps=steps,
             conditioner_inputs=batch,
             noise_jitter=sigma,
-            progress_cb=lambda completed, _total: pbar.update_absolute(completed, steps),
+            progress_cb=_cb,
         ).clamp(-1, 1)
 
         out = out.permute(0, 2, 3, 1).cpu().float()
         out = (out + 1) / 2
         out = apply_tint(out, light_preset)
-
-        solver.cpu()
-        mm.soft_empty_cache()
-        return (out,)
+        return out
 
 
 NODE_CLASS_MAPPINGS = {"LBM_Batch_Processor": LBM_Batch_Processor}
