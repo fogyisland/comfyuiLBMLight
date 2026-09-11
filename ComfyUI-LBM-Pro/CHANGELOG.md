@@ -15,7 +15,7 @@ All notable changes to ComfyUI-LBM-Pro are documented here.
 - **Packaging**: `[build-system]` block, full `[project]` metadata, `ComfyUI_LBM_Pro` shipped in wheel, `torch` removed from `requirements.txt`, `Pillow`/`transformers` removed (unused/dead), README rewritten with §Installation Requirements + §Troubleshooting, planning docs marked SUPERSEDED, `_load_module_map` dead code removed.
 
 ### Tests
-- 89 tests passing (66 prior to the audit + 23 new tests across bridge inference, codec, loader, cache, aggregator, and node UX).
+- 90 tests passing (66 prior to the audit + 24 new tests across bridge inference, codec, loader, cache, aggregator, and node UX).
 
 ## v0.1.2 — 2026-09-11
 
