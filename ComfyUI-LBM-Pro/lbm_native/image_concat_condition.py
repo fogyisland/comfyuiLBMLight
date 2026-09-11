@@ -11,7 +11,7 @@ a reference to the heavyweight VAE.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 import torch
 import torch.nn.functional as F
@@ -44,23 +44,46 @@ class ImageConcatCondition(BaseCondition):
         config:      identifies which batch entries to consume.
         input_key:   the batch key that triggers this branch (usually
                      the primary source-image key).
+        codec:       optional default codec.  Required when the branch
+                     runs inside a :class:`ConditionAggregator`, which
+                     does not forward extras to its branches.  Direct
+                     callers may instead pass ``codec=`` per call.
+        ucg_rate:    per-instance unconditional-dropout rate.
     """
 
     input_key: str = "source_image"
 
-    def __init__(self, config: ImageConcatConfig, input_key: str = "source_image") -> None:
-        super().__init__()
+    def __init__(
+        self,
+        config: ImageConcatConfig,
+        input_key: str = "source_image",
+        codec: Optional[LatentCodec] = None,
+        ucg_rate: float = 0.0,
+    ) -> None:
+        super().__init__(ucg_rate=ucg_rate)
         self.config = config
         self.input_key = input_key
+        # Bypass ``nn.Module.__setattr__`` so the (frozen, heavyweight)
+        # VAE is not registered as a submodule — it must not appear in
+        # this branch's ``state_dict`` nor be moved by ``.to()``.
+        object.__setattr__(self, "_codec", codec)
+
+    @property
+    def codec(self) -> Optional[LatentCodec]:
+        return self._codec
 
     def forward(
         self,
         batch: Dict[str, Any],
-        codec: LatentCodec,
+        codec: Optional[LatentCodec] = None,
         force_zero_embedding: bool = False,
-        *args,
-        **kwargs,
     ) -> Dict[str, torch.Tensor]:
+        codec = codec if codec is not None else self._codec
+        if codec is None:
+            raise ValueError(
+                "ImageConcatCondition requires a codec: pass one to __init__ "
+                "(when used inside a ConditionAggregator) or to forward()"
+            )
         if force_zero_embedding:
             # Match the latent spatial shape by reading a sentinel key
             # so the caller still receives a properly-shaped tile_stack.

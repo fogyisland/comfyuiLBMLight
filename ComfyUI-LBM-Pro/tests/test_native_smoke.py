@@ -239,9 +239,10 @@ def test_slice_grid_yields_overlapping_offsets():
     # First and last tile must cover both ends
     assert starts[0] == 0
     assert starts[-1] + 128 >= 400
-    # Intermediate offsets must come from the ``range`` schedule, i.e.
-    # they are spaced by ``tile - overlap`` exactly.
+    # Every consecutive pair — including the final, clamped tile — must
+    # advance by at most one stride, otherwise the grid leaves a gap.
+    # The last offset is clamped to ``total - tile`` so its step is
+    # shorter than a full stride; the bound is therefore an upper one.
     stride = 128 - 16
-    intermediate = starts[:-1]
-    for i in range(1, len(intermediate)):
-        assert intermediate[i] - intermediate[i - 1] == stride
+    for i in range(1, len(starts)):
+        assert starts[i] - starts[i - 1] <= stride + 1

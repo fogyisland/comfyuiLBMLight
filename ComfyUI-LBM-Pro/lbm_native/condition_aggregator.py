@@ -30,13 +30,16 @@ class BaseCondition(nn.Module):
 
     Subclasses override :meth:`forward` and provide the
     ``input_key`` attribute to identify which batch key they consume.
+
+    ``ucg_rate`` is a per-instance attribute: two branches in the same
+    aggregator may drop out at different rates.
     """
 
     input_key: str = "image"
-    ucg_rate: float = 0.0
 
-    def __init__(self) -> None:
+    def __init__(self, ucg_rate: float = 0.0) -> None:
         super().__init__()
+        self.ucg_rate = ucg_rate
 
     def forward(self, batch: Dict[str, Any], force_zero_embedding: bool = False, *args, **kwargs):
         raise NotImplementedError("BaseCondition subclasses must override forward()")
@@ -72,21 +75,27 @@ class ConditionAggregator(nn.Module):
         batch: Dict[str, Any],
         ucg_keys: Optional[List[str]] = None,
         set_ucg_rate_zero: bool = False,
-        *args,
-        **kwargs,
     ):
+        """Run every branch and merge their modality tensors.
+
+        The aggregator deliberately accepts no ``*args``/``**kwargs``:
+        forwarding arbitrary extras to every branch made unrelated
+        branches responsible for kwargs they never asked for.  A branch
+        that needs a collaborator (e.g. a ``LatentCodec``) owns it.
+        """
         if ucg_keys is None:
             ucg_keys = []
         merged: Dict[str, Any] = {"guide_pack": {}}
         for branch in self.branches:
             force_zero = self._decide_zero(branch, ucg_keys, set_ucg_rate_zero)
-            piece = branch(batch, force_zero_embedding=force_zero, *args, **kwargs)
+            piece = branch(batch, force_zero_embedding=force_zero)
             for modality, tensor in piece.items():
                 existing = merged["guide_pack"].get(modality)
                 axis = STACK_AXES.get(modality, 1)
                 if existing is None:
                     merged["guide_pack"][modality] = tensor
                 else:
+                    self._check_stackable(modality, existing, tensor, axis)
                     merged["guide_pack"][modality] = torch.cat([existing, tensor], dim=axis)
             _LOGGER.debug(
                 "branch=%s input_key=%s force_zero=%s",
@@ -95,6 +104,34 @@ class ConditionAggregator(nn.Module):
                 force_zero,
             )
         return merged
+
+    @staticmethod
+    def _check_stackable(
+        modality: str,
+        existing: torch.Tensor,
+        tensor: torch.Tensor,
+        axis: int,
+    ) -> None:
+        """Reject modality tensors that cannot be concatenated.
+
+        Every axis other than the stack axis must match exactly.  A
+        silent ``torch.cat`` failure (or worse, a broadcast surprise
+        downstream) hides real branch-configuration bugs.
+        """
+        if existing.dim() != tensor.dim():
+            raise ValueError(
+                f"ConditionAggregator: branch produced modality {modality!r} "
+                f"with rank {tensor.dim()} but earlier branch produced rank {existing.dim()}"
+            )
+        for d in range(existing.dim()):
+            if d == axis:
+                continue
+            if existing.shape[d] != tensor.shape[d]:
+                raise ValueError(
+                    f"ConditionAggregator: branch produced modality {modality!r} "
+                    f"with shape {tuple(tensor.shape)} but earlier branch produced "
+                    f"shape {tuple(existing.shape)} (mismatch on axis {d}, stack axis {axis})"
+                )
 
     @staticmethod
     def _decide_zero(branch: BaseCondition, ucg_keys: List[str], set_ucg_rate_zero: bool) -> bool:

@@ -321,10 +321,12 @@ class BridgeSolver(InferenceCore):
     ) -> Optional[Dict[str, Any]]:
         if self.aggregator is None:
             return None
+        # ``codec`` is deliberately NOT passed: the aggregator does not
+        # forward extras to branches.  Branches that need the codec own
+        # their own reference (see ImageConcatCondition).
         return self.aggregator(
             batch,
             set_ucg_rate_zero=set_ucg_rate_zero,
-            codec=self.codec,
         )
 
     def _mix_bridge(
