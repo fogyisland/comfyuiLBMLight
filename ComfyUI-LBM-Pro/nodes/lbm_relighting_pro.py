@@ -34,6 +34,15 @@ class LBM_Relighting_Pro:
                 "mask": ("MASK",),
             },
         }
+    # PA25: LBM_Relighting_Pro does NOT expose a `bridge_noise_sigma`
+    # widget even though LBM_DepthNormal_Pro does.  The relighting
+    # node consumes a ``LIGHT_PRESET`` dict whose ``bridge_noise_sigma``
+    # field controls the noise level — adding a separate widget would
+    # create two sources of truth for the same parameter.  When the
+    # preset is built, ``LBM_Light_Preset.build`` copies the preset's
+    # own ``bridge_noise_sigma`` (per-preset calibration, e.g.
+    # night_blue=0.020 vs overcast=0.003) into the payload, so the
+    # widget-asymmetry is by design rather than a bug.
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
