@@ -37,23 +37,6 @@ def test_remap_translates_vae_prefix_to_codec_prefix():
     assert _remap_checkpoint_key("denoiser.conv_in.weight") == "denoiser.conv_in.weight"
 
 
-def test_build_key_index_first_wins():
-    from lbm_core.model_factory import _build_key_index
-
-    idx = _build_key_index(
-        [
-            "denoiser.conv_in.weight",
-            "vae.vae_model.encoder.conv_in.weight",
-            "vae.quant_conv.weight",
-        ]
-    )
-    assert idx["denoiser.conv_in.weight"] == "denoiser.conv_in.weight"
-    assert idx["codec.vae_model.encoder.conv_in.weight"] == (
-        "vae.vae_model.encoder.conv_in.weight"
-    )
-    assert idx["codec.vae_model.quant_conv.weight"] == "vae.quant_conv.weight"
-
-
 def test_remap_inverse_for_dummy_keys():
     """A checkpoint whose key layout mirrors jasperai's loads cleanly.
 

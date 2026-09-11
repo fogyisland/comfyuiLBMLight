@@ -188,18 +188,6 @@ def _remap_checkpoint_key(key: str) -> str:
     return key
 
 
-def _build_key_index(sd_keys):
-    """Group checkpoint keys by their post-remap target for one-pass lookups."""
-    index: dict[str, str] = {}
-    for k in sd_keys:
-        remapped = _remap_checkpoint_key(k)
-        # The first checkpoint key that maps to a given model key wins.
-        # Subsequent ones are logged as duplicates and ignored.
-        if remapped not in index:
-            index[remapped] = k
-    return index
-
-
 def load_lbm_checkpoint(
     model: BridgeSolver,
     ckpt_path: str,
@@ -248,8 +236,7 @@ def load_lbm_checkpoint(
     # ``Parameter`` object — equivalent to the prior per-param
     # ``param.data = ...`` for inference use.  We dedupe on the
     # post-remap target so the first checkpoint key mapping to any
-    # given model key wins, matching the prior ``_build_key_index``
-    # behaviour.
+    # given model key wins.
     new_sd: dict = {}
     for ckpt_key, tensor in sd.items():
         target = _remap_checkpoint_key(ckpt_key)
