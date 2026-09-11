@@ -86,6 +86,31 @@ def test_predict_clean_state_subtracts_sigma_scaled_output():
     assert torch.allclose(predicted, torch.full((1, 4, 8, 8), -0.5))
 
 
+def test_predict_clean_state_bridge_identity():
+    """Algebra identity: predict_clean_state recovers ``goal`` when the
+    bridge sample is the midpoint of ``anchor`` and ``goal`` and the
+    model output equals ``anchor - goal``.
+
+    Trace:
+        noisy = 0.5 * anchor + 0.5 * goal
+        prediction = noisy - 0.5 * (anchor - goal)
+                   = 0.5*anchor + 0.5*goal - 0.5*anchor + 0.5*goal
+                   = goal
+    """
+    import torch
+
+    from lbm_native import predict_clean_state
+
+    anchor = torch.randn(1, 4, 8, 8)
+    goal = torch.randn(1, 4, 8, 8)
+    sigma = torch.full((1, 1, 1, 1), 0.5)
+    noisy = sigma * anchor + (1.0 - sigma) * goal
+    model_output = anchor - goal
+
+    predicted = predict_clean_state(noisy, model_output, sigma)
+    assert torch.allclose(predicted, goal, atol=1e-5)
+
+
 def test_gather_sigmas_returns_broadcastable_shape():
     import torch
 
