@@ -10,15 +10,8 @@ import torch
 import comfy.model_management as mm
 from comfy.utils import ProgressBar
 
-from lbm_core import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE
+from lbm_core import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE, apply_tint
 from lbm_core.presets import PRESETS
-
-
-def _apply_tint(image: torch.Tensor, preset: dict) -> torch.Tensor:
-    """Apply (rgb_tint × intensity) per-pixel to an image batch (B, H, W, C)."""
-    tint = torch.tensor(preset["rgb_tint"], dtype=image.dtype, device=image.device)
-    intensity = float(preset["intensity"])
-    return (image * tint * intensity).clamp(0.0, 1.0)
 
 
 class LBM_Relighting_Pro:
@@ -99,7 +92,7 @@ class LBM_Relighting_Pro:
 
         out = out.permute(0, 2, 3, 1).cpu().float()
         out = (out + 1) / 2
-        out = _apply_tint(out, light_preset)
+        out = apply_tint(out, light_preset)
         solver.cpu()
         mm.soft_empty_cache()
         return (out,)

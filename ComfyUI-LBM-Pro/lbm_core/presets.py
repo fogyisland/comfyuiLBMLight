@@ -13,7 +13,14 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class LightPreset:
-    """A lighting style applied after LBM inference."""
+    """A lighting style applied after LBM inference.
+
+    ``rgb_tint`` per-channel multipliers are clamped to ``[0.0, 1.5]``
+    so no single channel can wash out the image — presets that
+    mathematically derive a value above 1.5 (e.g. ``_temperature_to_rgb_tint``
+    can reach ~1.6× on the warm or cool extreme) are pinned at the
+    clamp so behaviour stays predictable across the preset library.
+    """
     name: str
     rgb_tint: tuple[float, float, float]
     intensity: float
@@ -86,7 +93,8 @@ def _temperature_to_rgb_tint(temperature_k: float) -> tuple[float, float, float]
 
     Warm tints (low K, ~3000) have R > B; cool tints (high K, ~9000) have
     B > R. Output channels center around 1.0 so mean brightness is
-    preserved.
+    preserved, with each channel clamped to ``[0.0, 1.5]`` so no single
+    channel can wash out the image.
 
     Uses a piecewise linear model derived from blackbody radiation
     reference points (2000K → very orange, 5500K → neutral, 10000K →
@@ -114,7 +122,10 @@ def _temperature_to_rgb_tint(temperature_k: float) -> tuple[float, float, float]
         b = 1.0               # stays 1.0
     # Center on mean=1 so brightness is preserved.
     mean = (r + g + b) / 3.0
-    return (r / mean, g / mean, b / mean)
+    raw = (r / mean, g / mean, b / mean)
+    # C27: clamp each channel to [0.0, 1.5] so no preset can wash out
+    # a single channel even at the warm/cool extremes.
+    return tuple(max(0.0, min(1.5, c)) for c in raw)
 
 
 def build_custom_preset(

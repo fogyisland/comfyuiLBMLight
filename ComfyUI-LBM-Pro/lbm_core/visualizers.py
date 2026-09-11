@@ -6,7 +6,10 @@ package lightweight).
 """
 from __future__ import annotations
 
+from typing import Optional
+
 import numpy as np
+import torch
 
 
 COLORMAPS: list[str] = ["viridis", "inferno", "turbo", "gray"]
@@ -100,3 +103,30 @@ def normalize_normal_map(normal_np: np.ndarray) -> np.ndarray:
     out = arr / safe
     out = np.where(norm > 1e-8, out, arr)
     return out
+
+
+def apply_tint(
+    image: torch.Tensor,
+    preset: dict,
+    clamp_lo: float = 0.0,
+    clamp_hi: float = 1.0,
+) -> torch.Tensor:
+    """Apply (rgb_tint × intensity) per-pixel to an image batch (B, H, W, C).
+
+    Extracted from ``nodes/lbm_relighting_pro.py`` and
+    ``nodes/lbm_batch_processor.py`` so all post-LBM tinting goes
+    through the same code path (N16).  Defaults clamp to ``[0, 1]``;
+    callers wanting a wider range can override ``clamp_lo`` /
+    ``clamp_hi``.
+
+    Args:
+        image: Tensor of shape (B, H, W, C), typically the
+            ``(out + 1) / 2`` result of LBM inference.
+        preset: dict with keys ``rgb_tint`` (length-3 tuple of floats)
+            and ``intensity`` (scalar float).
+        clamp_lo: lower bound for the final clamp (default 0.0).
+        clamp_hi: upper bound for the final clamp (default 1.0).
+    """
+    tint = torch.tensor(preset["rgb_tint"], dtype=image.dtype, device=image.device)
+    intensity = float(preset["intensity"])
+    return (image * tint * intensity).clamp(clamp_lo, clamp_hi)

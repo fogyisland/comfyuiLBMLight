@@ -8,7 +8,12 @@ directly from `lbm_core.model_factory`.
 from .cache import LBMModelCache
 from .presets import PRESETS, LightPreset, build_custom_preset
 from .types import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE
-from .visualizers import COLORMAPS, depth_to_colormap, normalize_normal_map
+from .visualizers import (
+    COLORMAPS,
+    apply_tint,
+    depth_to_colormap,
+    normalize_normal_map,
+)
 
 __all__ = [
     "LBM_MODEL_TYPE",
@@ -18,6 +23,7 @@ __all__ = [
     "build_custom_preset",
     "LBMModelCache",
     "COLORMAPS",
+    "apply_tint",
     "depth_to_colormap",
     "normalize_normal_map",
 ]
