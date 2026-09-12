@@ -5,65 +5,263 @@
     {
       "id": 1,
       "type": "LBM_Model_Loader",
-      "pos": [0, 0],
-      "size": [320, 220],
-      "inputs": [],
-      "outputs": [{"name": "lbm_model", "type": "LBM_MODEL", "links": [1]}],
-      "widgets_values": ["model.safetensors", "relighting", "bf16", false, "auto (try mirror, fall back)"],
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        320,
+        220
+      ],
+      "inputs": [
+        {
+          "name": "model_name",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "task",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "precision",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "force_reload",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "mirror",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "lbm_model",
+          "type": "LBM_MODEL",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "widgets_values": [
+        "model.safetensors",
+        "relighting",
+        "bf16",
+        false,
+        "auto (try mirror, fall back)"
+      ],
       "properties": {}
     },
     {
       "id": 2,
       "type": "LoadImage",
-      "pos": [0, 260],
-      "size": [320, 220],
+      "pos": [
+        0,
+        260
+      ],
+      "size": [
+        320,
+        220
+      ],
       "inputs": [],
-      "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [2]}],
-      "widgets_values": ["example.png"],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "widgets_values": [
+        "example.png"
+      ],
       "properties": {}
     },
     {
       "id": 3,
       "type": "LBM_Light_Preset",
-      "pos": [0, 520],
-      "size": [320, 220],
-      "inputs": [],
-      "outputs": [{"name": "light_preset", "type": "LIGHT_PRESET", "links": [3]}],
-      "widgets_values": ["preset", "warm_neutral", 45.0, 45.0, 1.0, 5500],
+      "pos": [
+        0,
+        520
+      ],
+      "size": [
+        320,
+        220
+      ],
+      "inputs": [
+        {
+          "name": "mode",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "preset_name",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "azimuth_deg",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "elevation_deg",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "intensity",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "temperature_k",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "light_preset",
+          "type": "LIGHT_PRESET",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "widgets_values": [
+        "preset",
+        "warm_neutral",
+        45.0,
+        45.0,
+        1.0,
+        5500
+      ],
       "properties": {}
     },
     {
       "id": 4,
       "type": "LBM_Relighting_Pro",
-      "pos": [400, 200],
-      "size": [320, 220],
-      "inputs": [
-        {"name": "lbm_model", "type": "LBM_MODEL", "link": 1},
-        {"name": "image", "type": "IMAGE", "link": 2},
-        {"name": "light_preset", "type": "LIGHT_PRESET", "link": 3}
+      "pos": [
+        400,
+        200
       ],
-      "outputs": [{"name": "image", "type": "IMAGE", "links": [5]}],
-      "widgets_values": [28],
+      "size": [
+        320,
+        220
+      ],
+      "inputs": [
+        {
+          "name": "lbm_model",
+          "type": "LBM_MODEL",
+          "link": 1
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "name": "steps",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "light_preset",
+          "type": "LIGHT_PRESET",
+          "link": 3
+        },
+        {
+          "name": "mask",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "widgets_values": [
+        28
+      ],
       "properties": {}
     },
     {
       "id": 5,
       "type": "SaveImage",
-      "pos": [800, 200],
-      "size": [320, 220],
-      "inputs": [{"name": "images", "type": "IMAGE", "link": 5}],
+      "pos": [
+        800,
+        200
+      ],
+      "size": [
+        320,
+        220
+      ],
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 5
+        }
+      ],
       "outputs": [],
-      "widgets_values": ["relit"],
+      "widgets_values": [
+        "relit"
+      ],
       "properties": {}
     }
   ],
   "links": [
-    [1, 1, 0, 4, 0, "LBM_MODEL"],
-    [2, 2, 0, 4, 1, "IMAGE"],
-    [3, 3, 0, 4, 2, "LIGHT_PRESET"],
-    [5, 4, 0, 5, 0, "IMAGE"]
+    [
+      1,
+      1,
+      0,
+      4,
+      0,
+      "LBM_MODEL"
+    ],
+    [
+      2,
+      2,
+      0,
+      4,
+      1,
+      "IMAGE"
+    ],
+    [
+      3,
+      3,
+      0,
+      4,
+      3,
+      "LIGHT_PRESET"
+    ],
+    [
+      5,
+      4,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ]
   ],
   "groups": [],
   "config": {},
-  "extra": {"workflow_info": {"name": "01_basic_relighting"}}
+  "extra": {
+    "workflow_info": {
+      "name": "01_basic_relighting"
+    }
+  }
 }

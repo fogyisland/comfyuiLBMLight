@@ -2,37 +2,371 @@
   "last_node_id": 5,
   "last_link_id": 5,
   "nodes": [
-    {"id": 1, "type": "LBM_Model_Loader", "pos": [0, 0], "size": [320, 220],
-     "inputs": [], "outputs": [{"name": "lbm_model", "type": "LBM_MODEL", "links": [1, 2]}],
-     "widgets_values": ["model.safetensors", "relighting", "bf16", false, "auto (try mirror, fall back)"], "properties": {}},
-    {"id": 2, "type": "LoadImage", "pos": [0, 260], "size": [320, 220],
-     "inputs": [], "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [3, 4]}],
-     "widgets_values": ["example.png"], "properties": {}},
-    {"id": 6, "type": "LBM_Relighting_Pro", "pos": [400, 0], "size": [320, 220],
-     "inputs": [{"name": "lbm_model", "type": "LBM_MODEL", "link": 1},
-                {"name": "image", "type": "IMAGE", "link": 3}],
-     "outputs": [{"name": "image", "type": "IMAGE", "links": [10]}],
-     "widgets_values": [28], "properties": {}},
-    {"id": 7, "type": "LBM_Relighting_Pro", "pos": [400, 260], "size": [320, 220],
-     "inputs": [{"name": "lbm_model", "type": "LBM_MODEL", "link": 2},
-                {"name": "image", "type": "IMAGE", "link": 4}],
-     "outputs": [{"name": "image", "type": "IMAGE", "links": [11]}],
-     "widgets_values": [28], "properties": {}},
-    {"id": 8, "type": "LBM_Compare_Grid", "pos": [800, 100], "size": [420, 320],
-     "inputs": [{"name": "image_1", "type": "IMAGE", "link": 10},
-                {"name": "image_2", "type": "IMAGE", "link": 11}],
-     "outputs": [{"name": "grid", "type": "IMAGE", "links": [12]}],
-     "widgets_values": ["horizontal", 8, "error"], "properties": {}},
-    {"id": 9, "type": "SaveImage", "pos": [1300, 100], "size": [320, 220],
-     "inputs": [{"name": "images", "type": "IMAGE", "link": 12}],
-     "outputs": [], "widgets_values": ["cache_chain_demo"], "properties": {}}
+    {
+      "id": 1,
+      "type": "LBM_Model_Loader",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        320,
+        220
+      ],
+      "inputs": [
+        {
+          "name": "model_name",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "task",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "precision",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "force_reload",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "mirror",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "lbm_model",
+          "type": "LBM_MODEL",
+          "links": [
+            1,
+            2
+          ]
+        }
+      ],
+      "widgets_values": [
+        "model.safetensors",
+        "relighting",
+        "bf16",
+        false,
+        "auto (try mirror, fall back)"
+      ],
+      "properties": {}
+    },
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        260
+      ],
+      "size": [
+        320,
+        220
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            3,
+            4
+          ]
+        }
+      ],
+      "widgets_values": [
+        "example.png"
+      ],
+      "properties": {}
+    },
+    {
+      "id": 6,
+      "type": "LBM_Relighting_Pro",
+      "pos": [
+        400,
+        0
+      ],
+      "size": [
+        320,
+        220
+      ],
+      "inputs": [
+        {
+          "name": "lbm_model",
+          "type": "LBM_MODEL",
+          "link": 1
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 3
+        },
+        {
+          "name": "steps",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "light_preset",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "mask",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "widgets_values": [
+        28
+      ],
+      "properties": {}
+    },
+    {
+      "id": 7,
+      "type": "LBM_Relighting_Pro",
+      "pos": [
+        400,
+        260
+      ],
+      "size": [
+        320,
+        220
+      ],
+      "inputs": [
+        {
+          "name": "lbm_model",
+          "type": "LBM_MODEL",
+          "link": 2
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "name": "steps",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "light_preset",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "mask",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "widgets_values": [
+        28
+      ],
+      "properties": {}
+    },
+    {
+      "id": 8,
+      "type": "LBM_Compare_Grid",
+      "pos": [
+        800,
+        100
+      ],
+      "size": [
+        420,
+        320
+      ],
+      "inputs": [
+        {
+          "name": "image_1",
+          "type": "IMAGE",
+          "link": 10
+        },
+        {
+          "name": "image_2",
+          "type": "IMAGE",
+          "link": 11
+        },
+        {
+          "name": "layout",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "image_3",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "image_4",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "image_5",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "image_6",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "image_7",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "image_8",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "image_9",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "padding",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "batch_mode",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "grid",
+          "type": "IMAGE",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "widgets_values": [
+        "horizontal",
+        8,
+        "error"
+      ],
+      "properties": {}
+    },
+    {
+      "id": 9,
+      "type": "SaveImage",
+      "pos": [
+        1300,
+        100
+      ],
+      "size": [
+        320,
+        220
+      ],
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 12
+        }
+      ],
+      "outputs": [],
+      "widgets_values": [
+        "cache_chain_demo"
+      ],
+      "properties": {}
+    }
   ],
   "links": [
-    [1, 1, 0, 6, 0, "LBM_MODEL"], [2, 1, 0, 7, 0, "LBM_MODEL"],
-    [3, 2, 0, 6, 1, "IMAGE"], [4, 2, 0, 7, 1, "IMAGE"],
-    [10, 6, 0, 8, 0, "IMAGE"], [11, 7, 0, 8, 1, "IMAGE"],
-    [12, 8, 0, 9, 0, "IMAGE"]
+    [
+      1,
+      1,
+      0,
+      6,
+      0,
+      "LBM_MODEL"
+    ],
+    [
+      2,
+      1,
+      0,
+      7,
+      0,
+      "LBM_MODEL"
+    ],
+    [
+      3,
+      2,
+      0,
+      6,
+      1,
+      "IMAGE"
+    ],
+    [
+      4,
+      2,
+      0,
+      7,
+      1,
+      "IMAGE"
+    ],
+    [
+      10,
+      6,
+      0,
+      8,
+      0,
+      "IMAGE"
+    ],
+    [
+      11,
+      7,
+      0,
+      8,
+      1,
+      "IMAGE"
+    ],
+    [
+      12,
+      8,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ]
   ],
-  "groups": [], "config": {},
-  "extra": {"workflow_info": {"name": "04_model_cache_chain"}}
+  "groups": [],
+  "config": {},
+  "extra": {
+    "workflow_info": {
+      "name": "04_model_cache_chain"
+    }
+  }
 }

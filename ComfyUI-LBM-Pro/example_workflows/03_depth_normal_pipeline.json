@@ -2,41 +2,347 @@
   "last_node_id": 7,
   "last_link_id": 6,
   "nodes": [
-    {"id": 1, "type": "LBM_Model_Loader", "pos": [0, 0], "size": [320, 220],
-     "inputs": [], "outputs": [{"name": "lbm_model", "type": "LBM_MODEL", "links": [1]}],
-     "widgets_values": ["model.safetensors", "depth", "bf16", false, "auto (try mirror, fall back)"], "properties": {}},
-    {"id": 2, "type": "LoadImage", "pos": [0, 260], "size": [320, 220],
-     "inputs": [], "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [2]}],
-     "widgets_values": ["example.png"], "properties": {}},
-    {"id": 3, "type": "LBM_DepthNormal_Pro", "pos": [400, 100], "size": [320, 220],
-     "inputs": [{"name": "lbm_model", "type": "LBM_MODEL", "link": 1},
-                {"name": "image", "type": "IMAGE", "link": 2}],
-     "outputs": [{"name": "raw", "type": "IMAGE", "links": [3]},
-                 {"name": "post_processed", "type": "IMAGE", "links": [4]}],
-     "widgets_values": ["depth", 28], "properties": {}},
-    {"id": 4, "type": "LBM_Depth_Visualizer", "pos": [800, 50], "size": [320, 180],
-     "inputs": [{"name": "depth_image", "type": "IMAGE", "link": 3}],
-     "outputs": [{"name": "image", "type": "IMAGE", "links": [5]}],
-     "widgets_values": ["turbo", false, true], "properties": {}},
-    {"id": 5, "type": "LBM_Depth_Visualizer", "pos": [800, 280], "size": [320, 180],
-     "inputs": [{"name": "depth_image", "type": "IMAGE", "link": 4}],
-     "outputs": [{"name": "image", "type": "IMAGE", "links": [6]}],
-     "widgets_values": ["inferno", false, true], "properties": {}},
-    {"id": 6, "type": "PreviewImage", "pos": [1200, 100], "size": [320, 220],
-     "inputs": [{"name": "images", "type": "IMAGE", "link": 5}],
-     "outputs": [], "properties": {}},
-    {"id": 7, "type": "SaveImage", "pos": [1200, 350], "size": [320, 220],
-     "inputs": [{"name": "images", "type": "IMAGE", "link": 6}],
-     "outputs": [], "widgets_values": ["depth_pp"], "properties": {}}
+    {
+      "id": 1,
+      "type": "LBM_Model_Loader",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        320,
+        220
+      ],
+      "inputs": [
+        {
+          "name": "model_name",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "task",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "precision",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "force_reload",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "mirror",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "lbm_model",
+          "type": "LBM_MODEL",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "widgets_values": [
+        "model.safetensors",
+        "depth",
+        "bf16",
+        false,
+        "auto (try mirror, fall back)"
+      ],
+      "properties": {}
+    },
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        260
+      ],
+      "size": [
+        320,
+        220
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "widgets_values": [
+        "example.png"
+      ],
+      "properties": {}
+    },
+    {
+      "id": 3,
+      "type": "LBM_DepthNormal_Pro",
+      "pos": [
+        400,
+        100
+      ],
+      "size": [
+        320,
+        220
+      ],
+      "inputs": [
+        {
+          "name": "lbm_model",
+          "type": "LBM_MODEL",
+          "link": 1
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "name": "task",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "steps",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "mask",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "raw",
+          "type": "IMAGE",
+          "links": [
+            3
+          ]
+        },
+        {
+          "name": "post_processed",
+          "type": "IMAGE",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "widgets_values": [
+        "depth",
+        28
+      ],
+      "properties": {}
+    },
+    {
+      "id": 4,
+      "type": "LBM_Depth_Visualizer",
+      "pos": [
+        800,
+        50
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "inputs": [
+        {
+          "name": "depth_image",
+          "type": "IMAGE",
+          "link": 3
+        },
+        {
+          "name": "colormap",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "invert",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "auto_normalize",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "widgets_values": [
+        "turbo",
+        false,
+        true
+      ],
+      "properties": {}
+    },
+    {
+      "id": 5,
+      "type": "LBM_Depth_Visualizer",
+      "pos": [
+        800,
+        280
+      ],
+      "size": [
+        320,
+        180
+      ],
+      "inputs": [
+        {
+          "name": "depth_image",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "name": "colormap",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "invert",
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "auto_normalize",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            6
+          ]
+        }
+      ],
+      "widgets_values": [
+        "inferno",
+        false,
+        true
+      ],
+      "properties": {}
+    },
+    {
+      "id": 6,
+      "type": "PreviewImage",
+      "pos": [
+        1200,
+        100
+      ],
+      "size": [
+        320,
+        220
+      ],
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 5
+        }
+      ],
+      "outputs": [],
+      "properties": {}
+    },
+    {
+      "id": 7,
+      "type": "SaveImage",
+      "pos": [
+        1200,
+        350
+      ],
+      "size": [
+        320,
+        220
+      ],
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 6
+        }
+      ],
+      "outputs": [],
+      "widgets_values": [
+        "depth_pp"
+      ],
+      "properties": {}
+    }
   ],
   "links": [
-    [1, 1, 0, 3, 0, "LBM_MODEL"],
-    [2, 2, 0, 3, 1, "IMAGE"],
-    [3, 3, 0, 4, 0, "IMAGE"],
-    [4, 3, 1, 5, 0, "IMAGE"],
-    [5, 4, 0, 6, 0, "IMAGE"],
-    [6, 5, 0, 7, 0, "IMAGE"]
+    [
+      1,
+      1,
+      0,
+      3,
+      0,
+      "LBM_MODEL"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      1,
+      "IMAGE"
+    ],
+    [
+      3,
+      3,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      3,
+      1,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      4,
+      0,
+      6,
+      0,
+      "IMAGE"
+    ],
+    [
+      6,
+      5,
+      0,
+      7,
+      0,
+      "IMAGE"
+    ]
   ],
-  "groups": [], "config": {},
-  "extra": {"workflow_info": {"name": "03_depth_normal_pipeline"}}
+  "groups": [],
+  "config": {},
+  "extra": {
+    "workflow_info": {
+      "name": "03_depth_normal_pipeline"
+    }
+  }
 }

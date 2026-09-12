@@ -15,6 +15,16 @@ All notable changes to ComfyUI-LBM-Pro are documented here.
 | `LBM_Compare_Grid` | `LBM Compare Grid` | `🧪BMLab/🔆LBM-Pro` |
 | `LBM_Batch_Processor` | `LBM Batch Processor` | `🧪BMLab/🔆LBM-Pro` |
 
+## v0.1.9 — 2026-09-12
+
+### Fixed
+- **`There are modules in CondUNet2D that should be kept in float32: []` warning on every model load.** `diffusers.ModelMixin.to()` at `modeling_utils.py:1500-1524` fires the warning unconditionally on `.to(dtype=...)` — even when `_keep_in_fp32_modules` is empty / `None`, because the helper defaults to `[]` and the guard check is `fp32_modules is not None`. The empty list still trips the warning, and `_keep_in_fp32_modules=None` doesn't help. Fix: `_BaseDiffusersUNet.cast_to(dtype)` bypasses `ModelMixin.to()` entirely and walks the parameter/buffer tree via `nn.Module._apply(lambda t: t.to(dtype) if t.is_floating_point() else t)`. `_assemble_cond_unet` in `model_factory.py` now calls `.cast_to(dtype)` instead of `.to(dtype=dtype)`. Functionally equivalent for the common dtype-only cast path (every caller pairs the cast with a separate `.to(device)` later). Verified end-to-end against the real jasperai checkpoint: `proj_in` stays `nn.Linear`, `to_k.weight` stays `(640, 640)`, checkpoint load succeeds with 0 warnings and 0 size mismatches.
+
+- **Example workflows had broken connection lines.** All 6 workflow JSONs in `example_workflows/` had `dst_slot` indices in their top-level `links[]` that pointed at widget slots instead of the matching declared input (e.g. the `INT steps` widget sits in slot 2 on `LBM_Relighting_Pro`, but the `light_preset` link was being recorded at slot 2 — ComfyUI then rendered the wire dangling on the widget with no visible connection). Concrete count: 10 dst_slot mismatches across 4 workflows (`01_basic_relighting.json` ×1, `02_light_presets.json` ×6, `05_compare_grid.json` ×2, `06_batch_processing.json` ×1). Fix: new `scripts/fix_workflow_links.py` reads each workflow JSON, looks up the real slot for the input name on the destination node via its `INPUT_TYPES()` schema, rewrites the top-level `links[].dst_slot`, and normalizes each node's `inputs[]` array to match `INPUT_TYPES()` declaration order. After the fix every link's `dst_slot` matches a declared input, and the 6 example workflows now show all connection lines correctly in the ComfyUI UI.
+
+### Added
+- **`scripts/fix_workflow_links.py`** — a re-runnable tool to repair `dst_slot` mismatches in any workflow JSON (handy when the schema of any of the 8 nodes changes between releases). Installs stubs for `comfy`, `comfy.model_management`, `comfy.utils`, and `folder_paths` so it can run from a plain venv without ComfyUI on `sys.path`. Re-running on an already-fixed workflow is a no-op.
+
 ## v0.1.8 — 2026-09-12
 
 ### Fixed

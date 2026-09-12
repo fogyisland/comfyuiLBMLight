@@ -79,7 +79,7 @@ def _assemble_cond_unet(dtype: torch.dtype) -> CondUNet2D:
         attention_head_dim=[5, 10, 20],
         use_linear_projection=True,
         time_embedding_type="positional",
-    ).to(dtype)
+    ).cast_to(dtype)
 
 
 def _assemble_codec(dtype: torch.dtype) -> LatentCodec:

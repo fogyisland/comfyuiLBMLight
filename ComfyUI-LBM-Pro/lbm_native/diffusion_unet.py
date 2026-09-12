@@ -68,6 +68,32 @@ class _BaseDiffusersUNet(InferenceCore):
         for param in self.parameters():
             param.requires_grad_(False)
 
+    def cast_to(self, dtype: Optional[torch.dtype] = None) -> "_BaseDiffusersUNet":
+        """Cast every floating-point parameter/buffer to ``dtype``.
+
+        Bypasses ``diffusers.ModelMixin.to`` to skip the noisy
+        "There are modules in CondUNet2D that should be kept in float32:
+        [...]" warning that fires unconditionally on
+        ``.to(dtype=...)`` (even when ``_keep_in_fp32_modules`` is empty,
+        because the check is ``fp32_modules is not None`` and the
+        helper defaults to ``[]``).  Functionally equivalent to
+        ``super().to(dtype=dtype)`` for the common dtype-only cast
+        path — we don't need device/memory_format handling here because
+        every caller pairs the cast with a separate ``.to(device)``
+        later.
+
+        Usage:
+            model = CondUNet2D(...).cast_to(torch.bfloat16)
+        """
+        if dtype is None:
+            return self
+
+        def _cast(t: torch.Tensor) -> torch.Tensor:
+            return t.to(dtype) if t.is_floating_point() else t
+
+        self._apply(_cast)
+        return self
+
 
 class PlainUNet2D(_BaseDiffusersUNet, UNet2DModel):
     """Wraps ``diffusers.UNet2DModel`` so it speaks the guide convention.
