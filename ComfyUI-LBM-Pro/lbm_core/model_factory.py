@@ -115,15 +115,17 @@ def _assemble_codec(dtype: torch.dtype) -> LatentCodec:
 
 
 def _assemble_scheduler() -> FlowMatchEulerDiscreteScheduler:
+    # The ``FlowMatchEulerDiscreteScheduler`` only consumes three keys:
+    # ``num_train_timesteps``, ``shift``, and ``use_dynamic_shifting``.
+    # The legacy config also passed SD-style keys (``beta_schedule``,
+    # ``beta_start``, ``beta_end``, ``timestep_spacing``) — these are
+    # silently ignored by the FlowMatch scheduler and used to fire a
+    # warning on every model load.  Drop them.
     return FlowMatchEulerDiscreteScheduler.from_config(
         {
             "num_train_timesteps": 1000,
             "shift": 1.0,
             "use_dynamic_shifting": False,
-            "beta_schedule": "scaled_linear",
-            "beta_start": 0.00085,
-            "beta_end": 0.012,
-            "timestep_spacing": "leading",
         }
     )
 

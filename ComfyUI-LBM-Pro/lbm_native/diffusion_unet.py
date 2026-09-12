@@ -76,9 +76,23 @@ class PlainUNet2D(_BaseDiffusersUNet, UNet2DModel):
     only an optional class embedding.  We still expose the full guide
     interface so a caller can swap wrappers without re-plumbing
     graph nodes.
+
+    Init wiring: see ``CondUNet2D.__init__`` for the full rationale.
+    Short version — ``InferenceCore.__init__`` deliberately does NOT
+    call ``super().__init__()`` (the diffusers parent's chain has
+    already done so), but it still needs to run to populate
+    ``self.stage_config`` and register the mixin's helpers.
     """
 
     def __init__(self, *args, **kwargs) -> None:
+        # Init order is load-bearing: ``UNet2DModel.__init__`` walks
+        # the MRO chain via ``super().__init__()`` (which lands on
+        # ``nn.Module.__init__`` and configures ``_modules`` /
+        # ``_parameters``).  ``InferenceCore.__init__`` deliberately
+        # does NOT call ``super().__init__()`` (see its docstring) —
+        # the diffusers parent has already done that work — but it
+        # still needs to run to populate ``self.stage_config`` and
+        # satisfy the mixin contract.
         UNet2DModel.__init__(self, *args, **kwargs)
         InferenceCore.__init__(self)
 
@@ -111,6 +125,15 @@ class CondUNet2D(_BaseDiffusersUNet, UNet2DConditionModel):
     """
 
     def __init__(self, *args, **kwargs) -> None:
+        # Init order is load-bearing: see ``PlainUNet2D.__init__`` for
+        # the full rationale. ``UNet2DConditionModel.__init__`` walks
+        # MRO through ``super().__init__()`` to wire up the diffusers
+        # ``ModelMixin`` and the underlying ``nn.Module`` machinery.
+        # ``InferenceCore.__init__`` deliberately skips its own
+        # ``super().__init__()`` so the diffusers parent is NOT
+        # re-initialised with default kwargs — but it still needs to
+        # run to populate ``self.stage_config`` and the mixin's
+        # bookkeeping.
         UNet2DConditionModel.__init__(self, *args, **kwargs)
         InferenceCore.__init__(self)
 

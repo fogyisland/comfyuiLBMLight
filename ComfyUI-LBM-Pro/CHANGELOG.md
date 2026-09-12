@@ -15,6 +15,27 @@ All notable changes to ComfyUI-LBM-Pro are documented here.
 | `LBM_Compare_Grid` | `LBM Compare Grid` | `🧪BMLab/🔆LBM-Pro` |
 | `LBM_Batch_Processor` | `LBM Batch Processor` | `🧪BMLab/🔆LBM-Pro` |
 
+## v0.1.8 — 2026-09-12
+
+### Fixed
+- **`Error(s) in loading state_dict for BridgeSolver` on every inference call.** The diamond MRO of `CondUNet2D` / `PlainUNet2D` (`Subclass → _BaseDiffusersUNet → InferenceCore → diffusers.UNet2D*Model`) made the diffusers parent's `__init__` run **twice**: once explicitly (with the user's architecture kwargs), then a second time via `super().__init__()` from `InferenceCore.__init__` — but with NO arguments, so every diffusers default silently overwrote the caller's settings. Concrete symptoms (every one of which jasperai's checkpoint would catch):
+  - `block_out_channels=[320, 640, 1280]` → `(320, 640, 1280, 1280)` (4 levels, default)
+  - `cross_attention_dim=[320, 640, 1280]` → `1280` (scalar, default)
+  - `transformer_layers_per_block=[1, 2, 10]` → `1` (default)
+  - `use_linear_projection=True` → `False` (default) — so `Attention.proj_in` became `Conv2d` instead of `Linear`, and cross-attn `to_k` / `to_v` silently concatenated encoder dims. Net result: every cross-attention weight in the checkpoint had a 2× or 4× shape mismatch.
+
+  Fix:
+  1. `InferenceCore.__init__` no longer calls `super().__init__()`. The diffusers parent's own `super().__init__()` chain (which lives inside `UNet2DConditionModel.__init__` and `UNet2DModel.__init__`) has already wired up `nn.Module.__init__` by the time `InferenceCore.__init__` runs, so calling it again is redundant — and dangerous here, because the chain now lands on the diffusers `__init__` with no args.
+  2. `InferenceCore.__init__` keeps a guard for the bare-`InferenceCore()` case (no diffusers parent behind it): if `_modules` is missing, it explicitly invokes `nn.Module.__init__` so direct usage still works (used by tests / type stubs).
+  3. `CondUNet2D.__init__` and `PlainUNet2D.__init__` continue to call the diffusers parent's `__init__` first (with the architecture kwargs) and `InferenceCore.__init__` second (just to populate `stage_config` and the mixin's bookkeeping) — only the second chain through MRO is suppressed now.
+
+  Added `tests/test_diffusion_unet_init.py` with 8 regression tests that pin each of the architecture values to the jasperai spec and verify `proj_in` is `nn.Linear` (not `Conv2d`), `to_k.weight` has shape `(640, 640)` (no encoder concat), and `block_out_channels` stays at 3 entries. All 8 fail on the pre-fix code and pass after the fix.
+
+  Verified end-to-end via a round-trip checkpoint: build the relighting model, dump its `state_dict` in jasperai's key layout, load it back into a fresh model with `load_lbm_checkpoint`, and confirm `load_state_dict(strict=False)` no longer raises any `size mismatch` errors.
+
+### Changed
+- **`FlowMatchEulerDiscreteScheduler` warning cleanup.** `_assemble_scheduler` in `model_factory.py` was passing four SD-style keys (`beta_schedule`, `beta_start`, `beta_end`, `timestep_spacing`) that the FlowMatch scheduler silently ignores — but with a warning on every model load. Removed; the scheduler now only sees the three keys it actually consumes (`num_train_timesteps`, `shift`, `use_dynamic_shifting`). Same scheduler behaviour, no log noise.
+
 ## v0.1.7 — 2026-09-12
 
 ### Fixed
