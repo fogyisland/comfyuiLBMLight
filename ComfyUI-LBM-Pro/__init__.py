@@ -10,6 +10,14 @@ from __future__ import annotations
 import os
 import sys
 
+# ComfyUI loads custom nodes via importlib with only the custom_nodes/<pkg>
+# directory on sys.path, so sibling subpackages (`lbm_core`, `lbm_native`,
+# `nodes`) cannot be imported by their top-level name. Add this package's
+# directory to sys.path before any internal imports.
+_PKG_DIR = os.path.dirname(os.path.abspath(__file__))
+if _PKG_DIR not in sys.path:
+    sys.path.insert(0, _PKG_DIR)
+
 from lbm_core.types import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE
 
 __version__ = "0.1.3"
