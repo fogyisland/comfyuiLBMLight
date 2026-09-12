@@ -580,12 +580,70 @@ The loader also requires ≥ 95 % of solver parameters to be matched by the chec
 - **ComfyUI**: ≥ 2024 (must be installed first; the `comfy.*` imports assume ComfyUI is on `sys.path`)
 - **Checkpoint files**: each task's checkpoint downloads as `model.safetensors` into `ComfyUI/models/diffusion_models/LBM/`. The three HF repos (`jasperai/LBM_relighting`, `LBM_depth`, `LBM_normals`) all ship under that single filename — keep the `task` widget in sync with the file you actually downloaded. The Model Loader auto-downloads on first run; if you pre-place a file, name it `model.safetensors` to match the default.
 
+#### Manual pre-download (offline / corporate proxy / slow link)
+
+If the ComfyUI process cannot reach `hf-mirror.com` / `huggingface.co`, run the bundled downloader once before launching ComfyUI:
+
+```bash
+# All three tasks (~15 GB total, default mirror: hf-mirror.com → huggingface.co):
+python scripts/download_models.py --all
+
+# Just relighting:
+python scripts/download_models.py --task relighting
+
+# Force upstream (skip the China mirror):
+python scripts/download_models.py --task depth --mirror huggingface.co
+
+# Custom ComfyUI install location:
+python scripts/download_models.py --all --comfyui-dir /path/to/ComfyUI
+```
+
+The script saves each task under a task-specific filename so all three can coexist:
+
+```
+models/diffusion_models/LBM/
+    LBM_relighting.model.safetensors
+    LBM_depth.model.safetensors
+    LBM_normals.model.safetensors
+```
+
+After downloading, set the `model_name` dropdown on the `LBM Model Loader` node to the matching file. The Model Loader's default `model.safetensors` will also be picked up if you place a file by that exact name.
+
 > **中文 安装要求:**
 > - **显存**: ≥ 8 GB(打光 @ 1024²)— 批量处理建议 24 GB
 > - **Python**: ≥ 3.10
 > - **PyTorch**: ≥ 2.0(由 ComfyUI 自带,**不要**用 pip 单独安装)
 > - **ComfyUI**: ≥ 2024(必须先装好;`comfy.*` 的导入依赖 ComfyUI 在 `sys.path` 中)
 > - **Checkpoint 文件**: 每个任务的权重下载后都保存为 `model.safetensors` 放入 `ComfyUI/models/diffusion_models/LBM/`。三个 HF 仓库(`jasperai/LBM_relighting`、`LBM_depth`、`LBM_normals`)都使用同一个文件名 —— 请按实际下载的文件设置 `task` 控件。如果手动放置文件,请命名为 `model.safetensors` 与默认值匹配。Model Loader 在首次运行时会自动下载。
+
+#### 手动预下载(离线 / 公司代理 / 慢链接)
+
+如果 ComfyUI 进程无法访问 `hf-mirror.com` / `huggingface.co`,可以在启动 ComfyUI 前运行随附的下载脚本:
+
+```bash
+# 全部三个任务(总计 ~15 GB,默认镜像:hf-mirror.com → huggingface.co 兜底):
+python scripts/download_models.py --all
+
+# 仅 relighting:
+python scripts/download_models.py --task relighting
+
+# 强制使用上游(跳过国内镜像):
+python scripts/download_models.py --task depth --mirror huggingface.co
+
+# 自定义 ComfyUI 安装路径:
+python scripts/download_models.py --all --comfyui-dir /path/to/ComfyUI
+```
+
+脚本会把每个任务保存为任务特定的文件名,这样三个可以并存:
+
+```
+models/diffusion_models/LBM/
+    LBM_relighting.model.safetensors
+    LBM_depth.model.safetensors
+    LBM_normals.model.safetensors
+```
+
+下载完成后,在 `LBM Model Loader` 节点的 `model_name` 下拉里选对应的文件即可。如果直接用 `model.safetensors` 这个默认名,节点会自动找到。
 
 > **Distribution vs import name**: `pip install` registers the package as `comfyui-lbm-pro` (PyPI convention). The importable module is `ComfyUI_LBM_Pro` (PEP 503 normalization). ComfyUI's scanner imports the underscore form.
 
