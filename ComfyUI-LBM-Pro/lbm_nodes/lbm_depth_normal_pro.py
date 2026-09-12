@@ -33,7 +33,7 @@ class LBM_DepthNormal_Pro:
     RETURN_TYPES = ("IMAGE", "IMAGE")
     RETURN_NAMES = ("raw", "post_processed")
     FUNCTION = "process"
-    CATEGORY = "🧪AILab/🔆LBM-Pro"
+    CATEGORY = "🧪BMLab/🔆LBM-Pro"
 
     def process(
         self,

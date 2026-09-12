@@ -57,7 +57,7 @@ class LBM_Batch_Processor:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("images",)
     FUNCTION = "process_batch"
-    CATEGORY = "🧪AILab/🔆LBM-Pro"
+    CATEGORY = "🧪BMLab/🔆LBM-Pro"
 
     def process_batch(
         self,

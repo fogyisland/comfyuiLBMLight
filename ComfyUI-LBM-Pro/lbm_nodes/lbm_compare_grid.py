@@ -64,7 +64,7 @@ class LBM_Compare_Grid:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("grid",)
     FUNCTION = "compose"
-    CATEGORY = "🧪AILab/🔆LBM-Pro"
+    CATEGORY = "🧪BMLab/🔆LBM-Pro"
 
     def compose(
         self,

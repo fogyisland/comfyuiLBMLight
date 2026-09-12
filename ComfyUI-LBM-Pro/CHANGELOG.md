@@ -6,16 +6,25 @@ All notable changes to ComfyUI-LBM-Pro are documented here.
 
 | Internal class | Display name | Category |
 |----------------|--------------|----------|
-| `LBM_Model_Loader` | `LBM Model Loader` | `🧪AILab/🔆LBM-Pro` |
-| `LBM_Light_Preset` | `LBM Light Preset` | `🧪AILab/🔆LBM-Pro` |
-| `LBM_Relighting_Pro` | `LBM Relighting Pro` | `🧪AILab/🔆LBM-Pro` |
-| `LBM_DepthNormal_Pro` | `LBM Depth/Normal Pro` | `🧪AILab/🔆LBM-Pro` |
-| `LBM_Depth_Visualizer` | `LBM Depth Visualizer` | `🧪AILab/🔆LBM-Pro` |
-| `LBM_Normal_Visualizer` | `LBM Normal Visualizer` | `🧪AILab/🔆LBM-Pro` |
-| `LBM_Compare_Grid` | `LBM Compare Grid` | `🧪AILab/🔆LBM-Pro` |
-| `LBM_Batch_Processor` | `LBM Batch Processor` | `🧪AILab/🔆LBM-Pro` |
+| `LBM_Model_Loader` | `LBM Model Loader` | `🧪BMLab/🔆LBM-Pro` |
+| `LBM_Light_Preset` | `LBM Light Preset` | `🧪BMLab/🔆LBM-Pro` |
+| `LBM_Relighting_Pro` | `LBM Relighting Pro` | `🧪BMLab/🔆LBM-Pro` |
+| `LBM_DepthNormal_Pro` | `LBM Depth/Normal Pro` | `🧪BMLab/🔆LBM-Pro` |
+| `LBM_Depth_Visualizer` | `LBM Depth Visualizer` | `🧪BMLab/🔆LBM-Pro` |
+| `LBM_Normal_Visualizer` | `LBM Normal Visualizer` | `🧪BMLab/🔆LBM-Pro` |
+| `LBM_Compare_Grid` | `LBM Compare Grid` | `🧪BMLab/🔆LBM-Pro` |
+| `LBM_Batch_Processor` | `LBM Batch Processor` | `🧪BMLab/🔆LBM-Pro` |
 
 ## v0.1.5 — 2026-09-12
+
+### Changed
+- **README expansion.** Added a comprehensive **Reference Models** section covering all three jasperai checkpoints (Relighting / Depth / Normals) with HF repo, default filename, file size, goal field, discrete timesteps / weights / noise_jitter, output shape, intended consumer node, and per-model use-case guidance. Added a **Light Preset Gallery** table inside the `LBM Light Preset` node docs showing all 8 presets' actual rgb_tint / intensity / bridge_noise_sigma values plus a "when to pick which preset" cheat sheet. Replaced the 3-diagram "Data Flow Examples" section with per-workflow descriptions for all 6 example JSONs (each with node count, wiring diagram, run instructions, and edit suggestions). Updated Quick Start to enumerate all 6 workflows.
+
+### Fixed
+- **Node category rename** (`🧪AILab/🔆LBM-Pro` → `🧪BMLab/🔆LBM-Pro`) on all 8 nodes, CHANGELOG table, and README. The previous category was incorrect for this fork.
+- **Example workflow link integrity** (`example_workflows/02_light_presets.json`, `example_workflows/05_compare_grid.json`). Both files had duplicate link IDs in their top-level `links[]` array — the same source-to-target connection was registered 4 times with the same `link_id`, so ComfyUI's workflow loader could only resolve the first destination and the other 3 branches appeared disconnected in the UI. Each link now has a unique id; each of the 4 parallel branches is a distinct top-level link entry. Verified: all 6 workflows load with no dangling / mismatched / duplicate links.
+
+
 
 ### Changed
 - **README expansion.** Added a comprehensive **Reference Models** section covering all three jasperai checkpoints (Relighting / Depth / Normals) with HF repo, default filename, file size, goal field, discrete timesteps / weights / noise_jitter, output shape, intended consumer node, and per-model use-case guidance. Added a **Light Preset Gallery** table inside the `LBM Light Preset` node docs showing all 8 presets' actual rgb_tint / intensity / bridge_noise_sigma values plus a "when to pick which preset" cheat sheet. Replaced the 3-diagram "Data Flow Examples" section with per-workflow descriptions for all 6 example JSONs (each with node count, wiring diagram, run instructions, and edit suggestions). Updated Quick Start to enumerate all 6 workflows.

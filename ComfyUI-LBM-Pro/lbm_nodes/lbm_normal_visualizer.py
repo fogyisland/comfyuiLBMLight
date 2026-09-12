@@ -40,7 +40,7 @@ class LBM_Normal_Visualizer:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "visualize"
-    CATEGORY = "🧪AILab/🔆LBM-Pro"
+    CATEGORY = "🧪BMLab/🔆LBM-Pro"
 
     @staticmethod
     def _resolve_range(input_range: str, sample: torch.Tensor) -> bool:

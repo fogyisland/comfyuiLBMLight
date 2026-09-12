@@ -27,9 +27,9 @@ Built on top of the original [ComfyUI-LBM](https://github.com/1038lab/ComfyUI-LB
 
 ## Nodes
 
-Eight specialized nodes in category `🧪AILab/🔆LBM-Pro`. They form three logical groups: **Setup** (Loader + Preset, used as inputs to other nodes), **Inference** (Relighting Pro / Depth-Normal Pro / Batch Processor — consume a loaded model and emit images), and **Visualization** (Depth / Normal Visualizer / Compare Grid — post-process the inference outputs).
+Eight specialized nodes in category `🧪BMLab/🔆LBM-Pro`. They form three logical groups: **Setup** (Loader + Preset, used as inputs to other nodes), **Inference** (Relighting Pro / Depth-Normal Pro / Batch Processor — consume a loaded model and emit images), and **Visualization** (Depth / Normal Visualizer / Compare Grid — post-process the inference outputs).
 
-> **中文:** 共有 8 个专用节点,分类位于 `🧪AILab/🔆LBM-Pro`,分为三组:**配置组**(Loader + Preset,作为其它节点的输入)、**推理组**(Relighting Pro / Depth-Normal Pro / Batch Processor — 消费已加载的模型并输出图像)、**可视化组**(Depth / Normal Visualizer / Compare Grid — 对推理结果做后处理)。
+> **中文:** 共有 8 个专用节点,分类位于 `🧪BMLab/🔆LBM-Pro`,分为三组:**配置组**(Loader + Preset,作为其它节点的输入)、**推理组**(Relighting Pro / Depth-Normal Pro / Batch Processor — 消费已加载的模型并输出图像)、**可视化组**(Depth / Normal Visualizer / Compare Grid — 对推理结果做后处理)。
 
 ### `LBM Model Loader` — `LBM_Model_Loader`
 

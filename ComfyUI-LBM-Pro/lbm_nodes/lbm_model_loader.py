@@ -194,7 +194,7 @@ class LBM_Model_Loader:
     RETURN_TYPES = (LBM_MODEL_TYPE,)
     RETURN_NAMES = ("lbm_model",)
     FUNCTION = "load"
-    CATEGORY = "🧪AILab/🔆LBM-Pro"
+    CATEGORY = "🧪BMLab/🔆LBM-Pro"
 
     def load(
         self,

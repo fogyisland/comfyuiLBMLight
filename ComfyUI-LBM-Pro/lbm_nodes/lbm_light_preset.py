@@ -40,7 +40,7 @@ class LBM_Light_Preset:
     RETURN_TYPES = (LIGHT_PRESET_TYPE,)
     RETURN_NAMES = ("light_preset",)
     FUNCTION = "build"
-    CATEGORY = "🧪AILab/🔆LBM-Pro"
+    CATEGORY = "🧪BMLab/🔆LBM-Pro"
 
     def build(
         self,
