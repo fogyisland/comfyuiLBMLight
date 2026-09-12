@@ -15,6 +15,11 @@ All notable changes to ComfyUI-LBM-Pro are documented here.
 | `LBM_Compare_Grid` | `LBM Compare Grid` | `🧪BMLab/🔆LBM-Pro` |
 | `LBM_Batch_Processor` | `LBM Batch Processor` | `🧪BMLab/🔆LBM-Pro` |
 
+## v0.1.6 — 2026-09-12
+
+### Fixed
+- **Wrong model filename in download defaults.** The `LBM_Model_Loader` node defaulted to `LBM_relighting.safetensors` / `LBM_depth.safetensors` / `LBM_normals.safetensors` — those filenames do not exist on the jasperai HF repos, so the first-run download failed with `HTTPError: 404 Client Error: Not Found for url: https://huggingface.co/jasperai/LBM_relighting/resolve/main/LBM_relighting.safetensors`. All three repos actually ship a single file named `model.safetensors`. Fixed across `lbm_nodes/lbm_model_loader.py` (default + `_scan_models()` fallback), all 6 example workflows (`01_basic_relighting.json` through `06_batch_processing.json`), `tests/test_fixes.py`, and `README.md` (node-spec table, Reference Models table, and the "Checkpoint files" install-requirement line — now clarifies that the three repos share a single filename and the `task` widget selects which repo to fetch). Verified via HEAD request against `hf-mirror.com`: all three URLs return HTTP 200 with `content-length ≈ 5.02 GB`.
+
 ## v0.1.5 — 2026-09-12
 
 ### Changed

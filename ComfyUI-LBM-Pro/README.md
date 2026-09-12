@@ -41,7 +41,7 @@ Eight specialized nodes in category `🧪BMLab/🔆LBM-Pro`. They form three log
 
 | Name | Type | Default | Notes |
 |------|------|---------|-------|
-| `model_name` | COMBO | `LBM_relighting.safetensors` | All `.safetensors` files in `models/diffusion_models/LBM/` are listed |
+| `model_name` | COMBO | `model.safetensors` | All `.safetensors` files in `models/diffusion_models/LBM/` are listed |
 | `task` | COMBO | `relighting` | One of `relighting` / `depth` / `normal` — must match the checkpoint |
 | `precision` | COMBO | `auto` | `auto` resolves to bf16 on Ampere+, fp16 on Turing, fp32 otherwise |
 | `force_reload` | BOOLEAN | `false` | Evicts the cached entry and re-downloads/re-loads |
@@ -51,7 +51,7 @@ Eight specialized nodes in category `🧪BMLab/🔆LBM-Pro`. They form three log
 
 | 名称 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `model_name` | COMBO | `LBM_relighting.safetensors` | 列出 `models/diffusion_models/LBM/` 中所有 `.safetensors` 文件 |
+| `model_name` | COMBO | `model.safetensors` | 列出 `models/diffusion_models/LBM/` 中所有 `.safetensors` 文件 |
 | `task` | COMBO | `relighting` | 取值 `relighting` / `depth` / `normal` — 必须与 checkpoint 匹配 |
 | `precision` | COMBO | `auto` | `auto` 在 Ampere+ 上解析为 bf16,Turing 上为 fp16,其它为 fp32 |
 | `force_reload` | BOOLEAN | `false` | 驱逐缓存条目并重新下载/加载 |
@@ -514,9 +514,9 @@ LBM-Pro wraps **three** jasperai checkpoints published on Hugging Face. They sha
 
 | Task | HF repo | Default filename | Approx. size | Goal field | Discrete timesteps | Discrete weights | `noise_jitter` | Output shape | Consumed by |
 |------|---------|------------------|--------------|------------|--------------------|------------------|----------------|--------------|-------------|
-| `relighting` | `jasperai/LBM_relighting` | `LBM_relighting.safetensors` | ~1.7 GB | `source_image` | 250, 500, 750, 1000 | 0.25 / 0.25 / 0.25 / 0.25 | 0.005 | `(B, H, W, 3)` fp32 `[0, 1]` | `LBM Relighting Pro`, `LBM Batch Processor` |
-| `depth` | `jasperai/LBM_depth` | `LBM_depth.safetensors` | ~1.4 GB | `depth` | 250, 500, 750, 1000 | 0.025 / 0.05 / 0.025 / 0.90 | 0.100 | `(B, H, W, 1)` raw → 3-channel post-processed | `LBM Depth/Normal Pro` (set `task=depth`) |
-| `normal` | `jasperai/LBM_normals` | `LBM_normals.safetensors` | ~1.4 GB | `normals` | 250, 500, 750, 1000 | 0.05 / 0.10 / 0.05 / 0.80 | 0.100 | `(B, H, W, 3)` RGB-encoded normals `[-1, 1]` | `LBM Depth/Normal Pro` (set `task=normal`) |
+| `relighting` | `jasperai/LBM_relighting` | `model.safetensors` | ~1.7 GB | `source_image` | 250, 500, 750, 1000 | 0.25 / 0.25 / 0.25 / 0.25 | 0.005 | `(B, H, W, 3)` fp32 `[0, 1]` | `LBM Relighting Pro`, `LBM Batch Processor` |
+| `depth` | `jasperai/LBM_depth` | `model.safetensors` | ~1.4 GB | `depth` | 250, 500, 750, 1000 | 0.025 / 0.05 / 0.025 / 0.90 | 0.100 | `(B, H, W, 1)` raw → 3-channel post-processed | `LBM Depth/Normal Pro` (set `task=depth`) |
+| `normal` | `jasperai/LBM_normals` | `model.safetensors` | ~1.4 GB | `normals` | 250, 500, 750, 1000 | 0.05 / 0.10 / 0.05 / 0.80 | 0.100 | `(B, H, W, 3)` RGB-encoded normals `[-1, 1]` | `LBM Depth/Normal Pro` (set `task=normal`) |
 
 > **中文 模型汇总表:** 上面这张表列出了三个模型的来源、文件名、大小、训练目标、采样调度、噪声抖动、输出形状,以及被哪个节点消费。
 
@@ -578,14 +578,14 @@ The loader also requires ≥ 95 % of solver parameters to be matched by the chec
 - **Python**: ≥ 3.10
 - **PyTorch**: ≥ 2.0 (provided by ComfyUI; do NOT install via pip)
 - **ComfyUI**: ≥ 2024 (must be installed first; the `comfy.*` imports assume ComfyUI is on `sys.path`)
-- **Checkpoint files**: must end up at `ComfyUI/models/diffusion_models/LBM/LBM_relighting.safetensors` (and the depth / normals variants). The Model Loader auto-downloads on first run.
+- **Checkpoint files**: each task's checkpoint downloads as `model.safetensors` into `ComfyUI/models/diffusion_models/LBM/`. The three HF repos (`jasperai/LBM_relighting`, `LBM_depth`, `LBM_normals`) all ship under that single filename — keep the `task` widget in sync with the file you actually downloaded. The Model Loader auto-downloads on first run; if you pre-place a file, name it `model.safetensors` to match the default.
 
 > **中文 安装要求:**
 > - **显存**: ≥ 8 GB(打光 @ 1024²)— 批量处理建议 24 GB
 > - **Python**: ≥ 3.10
 > - **PyTorch**: ≥ 2.0(由 ComfyUI 自带,**不要**用 pip 单独安装)
 > - **ComfyUI**: ≥ 2024(必须先装好;`comfy.*` 的导入依赖 ComfyUI 在 `sys.path` 中)
-> - **Checkpoint 文件**: 必须位于 `ComfyUI/models/diffusion_models/LBM/LBM_relighting.safetensors`(以及 depth / normals 变体)。Model Loader 在首次运行时会自动下载。
+> - **Checkpoint 文件**: 每个任务的权重下载后都保存为 `model.safetensors` 放入 `ComfyUI/models/diffusion_models/LBM/`。三个 HF 仓库(`jasperai/LBM_relighting`、`LBM_depth`、`LBM_normals`)都使用同一个文件名 —— 请按实际下载的文件设置 `task` 控件。如果手动放置文件,请命名为 `model.safetensors` 与默认值匹配。Model Loader 在首次运行时会自动下载。
 
 > **Distribution vs import name**: `pip install` registers the package as `comfyui-lbm-pro` (PyPI convention). The importable module is `ComfyUI_LBM_Pro` (PEP 503 normalization). ComfyUI's scanner imports the underscore form.
 

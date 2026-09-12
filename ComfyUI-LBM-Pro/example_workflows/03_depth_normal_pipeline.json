@@ -4,7 +4,7 @@
   "nodes": [
     {"id": 1, "type": "LBM_Model_Loader", "pos": [0, 0], "size": [320, 220],
      "inputs": [], "outputs": [{"name": "lbm_model", "type": "LBM_MODEL", "links": [1]}],
-     "widgets_values": ["LBM_depth.safetensors", "depth", "bf16", false, "auto (try mirror, fall back)"], "properties": {}},
+     "widgets_values": ["model.safetensors", "depth", "bf16", false, "auto (try mirror, fall back)"], "properties": {}},
     {"id": 2, "type": "LoadImage", "pos": [0, 260], "size": [320, 220],
      "inputs": [], "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [2]}],
      "widgets_values": ["example.png"], "properties": {}},

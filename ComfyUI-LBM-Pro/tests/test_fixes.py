@@ -704,7 +704,7 @@ def test_download_tries_mirror_first(monkeypatch, tmp_path):
 
     # Run the download with the auto (try mirror, fall back) preset.
     target = loader_mod._download_model(
-        "LBM_relighting.safetensors", "relighting",
+        "model.safetensors", "relighting",
         mirror="auto (try mirror, fall back)",
     )
     # The first URL must be the mirror; the second must be huggingface.co.
@@ -713,7 +713,7 @@ def test_download_tries_mirror_first(monkeypatch, tmp_path):
     assert any("huggingface.co" in u for u in tried[1:]), (
         f"upstream fallback not attempted after mirror failure: {tried}"
     )
-    assert target.endswith("LBM_relighting.safetensors")
+    assert target.endswith("model.safetensors")
 
 
 def test_mirror_widget_present_in_input_types(monkeypatch, tmp_path):

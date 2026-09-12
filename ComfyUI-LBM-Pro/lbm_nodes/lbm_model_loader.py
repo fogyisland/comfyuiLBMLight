@@ -170,12 +170,12 @@ class LBM_Model_Loader:
 
     @classmethod
     def INPUT_TYPES(cls):
-        models = _scan_models() or ["LBM_relighting.safetensors"]
+        models = _scan_models() or ["model.safetensors"]
         return {
             "required": {
                 "model_name": (
                     models,
-                    {"default": "LBM_relighting.safetensors"},
+                    {"default": "model.safetensors"},
                 ),
                 "task": (["relighting", "depth", "normal"], {"default": "relighting"}),
                 "precision": (["auto", "fp32", "bf16", "fp16"], {"default": "auto"}),
