@@ -33,40 +33,64 @@ _NODE_MODULES = {
     "LBM_Batch_Processor": "nodes.lbm_batch_processor",
 }
 
-_LOADED: dict[str, dict] = {}
+_LOADED: dict = {}
+
+
+def _load_node_module(module_path: str):
+    """Import a node module and cache it. Returns the module or None.
+
+    Failure paths are logged to stderr so a typo does not silently
+    disable a node (PA6 / N3 audit fix).  When
+    ``LBM_PRO_DEBUG_RELOAD=1`` is set in the environment, a fresh
+    import is forced so a developer iterating on a node file sees
+    the change after one prompt (PA10).
+    """
+    if os.environ.get("LBM_PRO_DEBUG_RELOAD") == "1":
+        sys.modules.pop(module_path, None)
+        _LOADED.pop(module_path, None)
+    mod = _LOADED.get(module_path)
+    if mod is not None:
+        return mod
+    try:
+        mod = __import__(module_path, fromlist=["*"])
+    except ImportError as e:
+        print(
+            f"[ComfyUI-LBM-Pro] failed to import {module_path}: {e}",
+            file=sys.stderr,
+        )
+        return None
+    except Exception as e:  # noqa: BLE001
+        # Non-ImportError exceptions during import (e.g. a typo in a
+        # node file that surfaces as NameError) used to be silently
+        # swallowed by the bare `except` clause. Log them so the user
+        # can see what actually broke.
+        print(
+            f"[ComfyUI-LBM-Pro] unexpected error importing "
+            f"{module_path}: {type(e).__name__}: {e}",
+            file=sys.stderr,
+        )
+        return None
+    _LOADED[module_path] = mod
+    return mod
 
 
 def __getattr__(name: str):
-    # PA10: when the developer sets LBM_PRO_DEBUG_RELOAD=1 in the
-    # environment, force a fresh import of every node module on the
-    # next attribute access.  Useful when iterating on a node file
-    # without restarting ComfyUI — a single ComfyUI restart picks up
-    # the new code on the next prompt.
-    if os.environ.get("LBM_PRO_DEBUG_RELOAD") == "1":
-        for mod_name in list(_NODE_MODULES.values()):
-            sys.modules.pop(mod_name, None)
-        _LOADED.clear()
-    if name in ("NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"):
-        kind = "NODE_CLASS_MAPPINGS" if name == "NODE_CLASS_MAPPINGS" else "NODE_DISPLAY_NAME_MAPPINGS"
+    if name == "NODE_CLASS_MAPPINGS":
         merged: dict = {}
-        for cls_name, module_path in _NODE_MODULES.items():
-            mod = _LOADED.get(module_path)
+        for module_path in _NODE_MODULES.values():
+            mod = _load_node_module(module_path)
             if mod is None:
-                try:
-                    mod = __import__(module_path, fromlist=["*"])
-                except ImportError as e:
-                    # ComfyUI may not be available; skip this module
-                    # but log so a typo doesn't disappear silently.
-                    print(
-                        f"[ComfyUI-LBM-Pro] failed to import {module_path}: {e}",
-                        file=sys.stderr,
-                    )
-                    continue
-                _LOADED[module_path] = mod
-            attr_name = "NODE_CLASS_MAPPINGS" if kind == "NODE_CLASS_MAPPINGS" else "NODE_DISPLAY_NAME_MAPPINGS"
-            mapping = getattr(mod, attr_name, {})
-            merged.update(mapping)
-        # Cache on the module so subsequent lookups are fast
+                continue
+            merged.update(getattr(mod, "NODE_CLASS_MAPPINGS", {}))
+        globals()[name] = merged
+        return merged
+    if name == "NODE_DISPLAY_NAME_MAPPINGS":
+        merged: dict = {}
+        for module_path in _NODE_MODULES.values():
+            mod = _load_node_module(module_path)
+            if mod is None:
+                continue
+            merged.update(getattr(mod, "NODE_DISPLAY_NAME_MAPPINGS", {}))
         globals()[name] = merged
         return merged
     raise AttributeError(f"module 'ComfyUI_LBM_Pro' has no attribute '{name}'")
