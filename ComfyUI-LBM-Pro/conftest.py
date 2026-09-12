@@ -1,7 +1,7 @@
 """Pytest configuration.
 
 Adds the project root to sys.path so `import lbm_core` and
-`import nodes.*` work without needing the project to be installed.
+`import lbm_nodes.*` work without needing the project to be installed.
 
 Also prevents pytest from treating the project root as a package
 (which would cause the top-level __init__.py — which imports

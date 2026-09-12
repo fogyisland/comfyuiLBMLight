@@ -25,18 +25,18 @@ EXPECTED_CLASSES = {
 
 # Modules that do NOT need ComfyUI at class-definition time
 COMFYUI_FREE_MODULES = [
-    "nodes.lbm_light_preset",
-    "nodes.lbm_compare_grid",
-    "nodes.lbm_depth_visualizer",
-    "nodes.lbm_normal_visualizer",
+    "lbm_nodes.lbm_light_preset",
+    "lbm_nodes.lbm_compare_grid",
+    "lbm_nodes.lbm_depth_visualizer",
+    "lbm_nodes.lbm_normal_visualizer",
 ]
 
 # Modules that DO need ComfyUI (model loading)
 COMFYUI_MODULES = [
-    "nodes.lbm_model_loader",
-    "nodes.lbm_relighting_pro",
-    "nodes.lbm_depth_normal_pro",
-    "nodes.lbm_batch_processor",
+    "lbm_nodes.lbm_model_loader",
+    "lbm_nodes.lbm_relighting_pro",
+    "lbm_nodes.lbm_depth_normal_pro",
+    "lbm_nodes.lbm_batch_processor",
 ]
 
 # Names that indicate a "ComfyUI is missing" import failure rather than a

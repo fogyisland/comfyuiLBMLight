@@ -1,4 +1,8 @@
-"""LBM Depth/Normal Pro — emit raw + post-processed depth/normal maps."""
+"""LBM Relighting Pro — enhanced relighting with light preset + tinting.
+
+This node uses the rewritten LBM runtime (``lbm_native``) under the
+hood.  Public UI strings and node wiring are unchanged.
+"""
 from __future__ import annotations
 
 import torch
@@ -6,12 +10,13 @@ import torch
 import comfy.model_management as mm
 from comfy.utils import ProgressBar
 
-from lbm_core import LBM_MODEL_TYPE
-from nodes.lbm_model_loader import resolve_lbm_device
+from lbm_core import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE, apply_tint
+from lbm_core.presets import PRESETS
+from lbm_nodes.lbm_model_loader import resolve_lbm_device
 
 
-class LBM_DepthNormal_Pro:
-    """Run the LBM depth/normal model and emit both raw and post-processed images."""
+class LBM_Relighting_Pro:
+    """Run the cached LBM relighting model and apply a light preset tint."""
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -19,44 +24,50 @@ class LBM_DepthNormal_Pro:
             "required": {
                 "lbm_model": (LBM_MODEL_TYPE,),
                 "image": ("IMAGE",),
-                "task": (["depth", "normal"], {"default": "depth"}),
                 "steps": (
                     "INT",
                     {"default": 28, "min": 1, "max": 100},
                 ),
             },
             "optional": {
+                "light_preset": (LIGHT_PRESET_TYPE,),
                 "mask": ("MASK",),
             },
         }
+    # Inference is deterministic — noise injection happens in the
+    # training loop (``_mix_bridge`` consumes ``schedule.noise_jitter``),
+    # not at decode time, so neither this node nor Depth/Normal Pro
+    # exposes a `bridge_noise_sigma` widget.
 
-    RETURN_TYPES = ("IMAGE", "IMAGE")
-    RETURN_NAMES = ("raw", "post_processed")
-    FUNCTION = "process"
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "relight"
     CATEGORY = "🧪AILab/🔆LBM-Pro"
 
-    def process(
+    def relight(
         self,
         lbm_model: dict,
         image: torch.Tensor,
-        task: str,
         steps: int,
+        light_preset: dict | None = None,
         mask: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        # N12: empty batch is a hard error.
+    ) -> tuple[torch.Tensor]:
+        # N12: empty batch is a hard error — there is no reasonable
+        # default to fall back to and silently returning an empty
+        # tensor would surprise downstream nodes.
         if image.shape[0] == 0:
             raise ValueError("Empty batch (B == 0); need at least one image")
 
-        # N2: refuse to run a model cached for a different task.
-        # A relighting model loaded into this node would produce
-        # plausible-looking but wrong outputs.
-        if lbm_model.get("task") != task:
-            raise ValueError(
-                f"LBM_DepthNormal_Pro was given a model cached for "
-                f"task={lbm_model.get('task')!r} but the node is "
-                f"configured for task={task!r}. Load the correct model "
-                "or change the task parameter to match."
-            )
+        if light_preset is None:
+            wp = PRESETS["warm_neutral"]
+            light_preset = {
+                "name": wp.name,
+                "rgb_tint": wp.rgb_tint,
+                "intensity": wp.intensity,
+                "bridge_noise_sigma": wp.bridge_noise_sigma,
+                "description": wp.description,
+            }
+
         solver = lbm_model["model"]
         dtype = lbm_model["dtype"]
         device = resolve_lbm_device(lbm_model)
@@ -69,9 +80,9 @@ class LBM_DepthNormal_Pro:
                 m = m.unsqueeze(0).unsqueeze(0)
             elif m.ndim == 3:
                 m = m.unsqueeze(0)
-            # N11: keep the mask in fp32 — the bridge solver expects a
-            # fp32 mask channel; casting to the model dtype would lose
-            # precision in the masked regions.
+            # N11: keep the mask in fp32; the bridge solver expects a
+            # fp32 mask channel so a hard-cast to the model dtype
+            # would lose 1-bit precision in the masked regions.
             batch[solver.schedule.mask_field or "mask"] = m.to(device, dtype=torch.float32)
 
         solver.codec.to(device)
@@ -90,16 +101,11 @@ class LBM_DepthNormal_Pro:
 
         out = out.permute(0, 2, 3, 1).cpu().float()
         out = (out + 1) / 2
-
-        if task == "depth":
-            post = 1 - out
-        else:
-            post = out
-
+        out = apply_tint(out, light_preset)
         solver.cpu()
         mm.soft_empty_cache()
-        return (out, post)
+        return (out,)
 
 
-NODE_CLASS_MAPPINGS = {"LBM_DepthNormal_Pro": LBM_DepthNormal_Pro}
-NODE_DISPLAY_NAME_MAPPINGS = {"LBM_DepthNormal_Pro": "LBM Depth/Normal Pro"}
+NODE_CLASS_MAPPINGS = {"LBM_Relighting_Pro": LBM_Relighting_Pro}
+NODE_DISPLAY_NAME_MAPPINGS = {"LBM_Relighting_Pro": "LBM Relighting Pro"}

@@ -113,8 +113,8 @@ def apply_tint(
 ) -> torch.Tensor:
     """Apply (rgb_tint × intensity) per-pixel to an image batch (B, H, W, C).
 
-    Extracted from ``nodes/lbm_relighting_pro.py`` and
-    ``nodes/lbm_batch_processor.py`` so all post-LBM tinting goes
+    Extracted from ``lbm_nodes/lbm_relighting_pro.py`` and
+    ``lbm_nodes/lbm_batch_processor.py`` so all post-LBM tinting goes
     through the same code path (N16).  Defaults clamp to ``[0, 1]``;
     callers wanting a wider range can override ``clamp_lo`` /
     ``clamp_hi``.

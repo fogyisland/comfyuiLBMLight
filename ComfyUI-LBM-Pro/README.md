@@ -570,14 +570,14 @@ ComfyUI-LBM-Pro/
 │   ├── cache.py      # Thread-safe LRU-style cache
 │   ├── model_factory.py  # Build + load LBM models
 │   └── visualizers.py    # Depth colormaps + normal helpers
-├── nodes/            # ComfyUI node implementations
+├── lbm_nodes/        # ComfyUI node implementations (8 nodes)
 ├── lbm_native/       # Rewritten inference runtime (native)
 ├── tests/            # Unit + smoke tests
 ├── example_workflows/   # 6 ready-to-run .json workflows
 └── docs/             # Design + plan documents
 ```
 
-> **中文 架构:** `lbm_core/` 是纯逻辑(无 ComfyUI 依赖),`lbm_native/` 是重写的推理运行时,`nodes/` 是 ComfyUI 节点实现,`tests/` 包含 90 个测试,`example_workflows/` 提供 6 个开箱即用的工作流 JSON,`docs/` 是设计/计划文档。
+> **中文 架构:** `lbm_core/` 是纯逻辑(无 ComfyUI 依赖),`lbm_native/` 是重写的推理运行时,`lbm_nodes/` 是 ComfyUI 节点实现(8 个),`tests/` 包含 90 个测试,`example_workflows/` 提供 6 个开箱即用的工作流 JSON,`docs/` 是设计/计划文档。
 
 ## Custom Types
 

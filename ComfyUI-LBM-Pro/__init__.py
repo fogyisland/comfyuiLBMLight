@@ -12,7 +12,7 @@ import sys
 
 # ComfyUI loads custom nodes via importlib with only the custom_nodes/<pkg>
 # directory on sys.path, so sibling subpackages (`lbm_core`, `lbm_native`,
-# `nodes`) cannot be imported by their top-level name. Add this package's
+# `lbm_nodes`) cannot be imported by their top-level name. Add this package's
 # directory to sys.path before any internal imports.
 _PKG_DIR = os.path.dirname(os.path.abspath(__file__))
 if _PKG_DIR not in sys.path:
@@ -20,17 +20,17 @@ if _PKG_DIR not in sys.path:
 
 from lbm_core.types import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 _NODE_MODULES = {
-    "LBM_Model_Loader": "nodes.lbm_model_loader",
-    "LBM_Light_Preset": "nodes.lbm_light_preset",
-    "LBM_Relighting_Pro": "nodes.lbm_relighting_pro",
-    "LBM_DepthNormal_Pro": "nodes.lbm_depth_normal_pro",
-    "LBM_Depth_Visualizer": "nodes.lbm_depth_visualizer",
-    "LBM_Normal_Visualizer": "nodes.lbm_normal_visualizer",
-    "LBM_Compare_Grid": "nodes.lbm_compare_grid",
-    "LBM_Batch_Processor": "nodes.lbm_batch_processor",
+    "LBM_Model_Loader": "lbm_nodes.lbm_model_loader",
+    "LBM_Light_Preset": "lbm_nodes.lbm_light_preset",
+    "LBM_Relighting_Pro": "lbm_nodes.lbm_relighting_pro",
+    "LBM_DepthNormal_Pro": "lbm_nodes.lbm_depth_normal_pro",
+    "LBM_Depth_Visualizer": "lbm_nodes.lbm_depth_visualizer",
+    "LBM_Normal_Visualizer": "lbm_nodes.lbm_normal_visualizer",
+    "LBM_Compare_Grid": "lbm_nodes.lbm_compare_grid",
+    "LBM_Batch_Processor": "lbm_nodes.lbm_batch_processor",
 }
 
 _LOADED: dict = {}

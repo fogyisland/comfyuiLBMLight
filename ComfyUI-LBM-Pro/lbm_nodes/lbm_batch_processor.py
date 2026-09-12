@@ -8,7 +8,7 @@ from comfy.utils import ProgressBar
 
 from lbm_core import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE, apply_tint
 from lbm_core.presets import PRESETS
-from nodes.lbm_model_loader import resolve_lbm_device
+from lbm_nodes.lbm_model_loader import resolve_lbm_device
 
 
 def _normalize_mask(mask: torch.Tensor) -> torch.Tensor:

@@ -348,9 +348,9 @@ def test_batch_processor_chunks_when_over_max(monkeypatch, tmp_path):
 
     _stub_comfy(monkeypatch)
     _stub_folder_paths(monkeypatch, str(tmp_path))
-    sys.modules.pop("nodes.lbm_model_loader", None)
-    sys.modules.pop("nodes.lbm_batch_processor", None)
-    from nodes.lbm_batch_processor import LBM_Batch_Processor
+    sys.modules.pop("lbm_nodes.lbm_model_loader", None)
+    sys.modules.pop("lbm_nodes.lbm_batch_processor", None)
+    from lbm_nodes.lbm_batch_processor import LBM_Batch_Processor
 
     call_sizes: list[int] = []
 
@@ -408,9 +408,9 @@ def test_batch_processor_rejects_empty_batch(monkeypatch, tmp_path):
 
     _stub_comfy(monkeypatch)
     _stub_folder_paths(monkeypatch, str(tmp_path))
-    sys.modules.pop("nodes.lbm_model_loader", None)
-    sys.modules.pop("nodes.lbm_batch_processor", None)
-    from nodes.lbm_batch_processor import LBM_Batch_Processor
+    sys.modules.pop("lbm_nodes.lbm_model_loader", None)
+    sys.modules.pop("lbm_nodes.lbm_batch_processor", None)
+    from lbm_nodes.lbm_batch_processor import LBM_Batch_Processor
 
     class _StubSolver:
         class _Schedule:
@@ -438,9 +438,9 @@ def test_relighting_pro_rejects_empty_batch(monkeypatch, tmp_path):
 
     _stub_comfy(monkeypatch)
     _stub_folder_paths(monkeypatch, str(tmp_path))
-    sys.modules.pop("nodes.lbm_model_loader", None)
-    sys.modules.pop("nodes.lbm_relighting_pro", None)
-    from nodes.lbm_relighting_pro import LBM_Relighting_Pro
+    sys.modules.pop("lbm_nodes.lbm_model_loader", None)
+    sys.modules.pop("lbm_nodes.lbm_relighting_pro", None)
+    from lbm_nodes.lbm_relighting_pro import LBM_Relighting_Pro
 
     class _StubSolver:
         class _Schedule:
@@ -468,9 +468,9 @@ def test_depth_normal_pro_rejects_empty_batch(monkeypatch, tmp_path):
 
     _stub_comfy(monkeypatch)
     _stub_folder_paths(monkeypatch, str(tmp_path))
-    sys.modules.pop("nodes.lbm_model_loader", None)
-    sys.modules.pop("nodes.lbm_depth_normal_pro", None)
-    from nodes.lbm_depth_normal_pro import LBM_DepthNormal_Pro
+    sys.modules.pop("lbm_nodes.lbm_model_loader", None)
+    sys.modules.pop("lbm_nodes.lbm_depth_normal_pro", None)
+    from lbm_nodes.lbm_depth_normal_pro import LBM_DepthNormal_Pro
 
     class _StubSolver:
         class _Schedule:
@@ -500,9 +500,9 @@ def test_batch_processor_has_mask_widget(monkeypatch, tmp_path):
 
     _stub_comfy(monkeypatch)
     _stub_folder_paths(monkeypatch, str(tmp_path))
-    sys.modules.pop("nodes.lbm_model_loader", None)
-    sys.modules.pop("nodes.lbm_batch_processor", None)
-    from nodes.lbm_batch_processor import LBM_Batch_Processor
+    sys.modules.pop("lbm_nodes.lbm_model_loader", None)
+    sys.modules.pop("lbm_nodes.lbm_batch_processor", None)
+    from lbm_nodes.lbm_batch_processor import LBM_Batch_Processor
 
     spec = LBM_Batch_Processor.INPUT_TYPES()
     optional = spec.get("optional", {})
@@ -537,7 +537,7 @@ def test_predict_clean_state_handles_nan_inputs():
 # ---------------------------------------------------------------------------
 def test_compare_grid_rejects_multi_frame():
     """A multi-frame input must raise ValueError under default batch_mode."""
-    from nodes.lbm_compare_grid import LBM_Compare_Grid
+    from lbm_nodes.lbm_compare_grid import LBM_Compare_Grid
 
     node = LBM_Compare_Grid()
     # Two-frame (B=2) image, H=8, W=8, 3 channels
@@ -549,7 +549,7 @@ def test_compare_grid_rejects_multi_frame():
 
 def test_compare_grid_accepts_multi_frame_with_first_only():
     """Setting batch_mode='first_only' preserves the legacy first-frame behavior."""
-    from nodes.lbm_compare_grid import LBM_Compare_Grid
+    from lbm_nodes.lbm_compare_grid import LBM_Compare_Grid
 
     node = LBM_Compare_Grid()
     multi = torch.zeros(2, 8, 8, 3)
@@ -564,7 +564,7 @@ def test_compare_grid_accepts_multi_frame_with_first_only():
 
 def test_compare_grid_tile_mode_stacks_frames():
     """batch_mode='tile' stacks frames along the height axis of each cell."""
-    from nodes.lbm_compare_grid import LBM_Compare_Grid
+    from lbm_nodes.lbm_compare_grid import LBM_Compare_Grid
 
     node = LBM_Compare_Grid()
     # Two-frame stack of two distinct images.
@@ -593,9 +593,9 @@ def test_depth_normal_pro_rejects_wrong_task(monkeypatch, tmp_path):
     _stub_folder_paths(monkeypatch, str(tmp_path))
     # Force a fresh import of the loaders (which need folder_paths)
     # and the module under test.
-    sys.modules.pop("nodes.lbm_model_loader", None)
-    sys.modules.pop("nodes.lbm_depth_normal_pro", None)
-    from nodes.lbm_depth_normal_pro import LBM_DepthNormal_Pro
+    sys.modules.pop("lbm_nodes.lbm_model_loader", None)
+    sys.modules.pop("lbm_nodes.lbm_depth_normal_pro", None)
+    from lbm_nodes.lbm_depth_normal_pro import LBM_DepthNormal_Pro
 
     # The validation runs before any heavy work, so the rest of the
     # lbm_model dict only needs the fields the validator reads.
@@ -669,8 +669,8 @@ def test_download_tries_mirror_first(monkeypatch, tmp_path):
     _stub_comfy(monkeypatch)
 
     # Force a fresh import of the loader under test.
-    sys.modules.pop("nodes.lbm_model_loader", None)
-    import nodes.lbm_model_loader as loader_mod
+    sys.modules.pop("lbm_nodes.lbm_model_loader", None)
+    import lbm_nodes.lbm_model_loader as loader_mod
 
     # Track which URLs the loader tries, in order.
     tried: list[str] = []
@@ -726,8 +726,8 @@ def test_mirror_widget_present_in_input_types(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "folder_paths", fake_folder_paths)
     _stub_comfy(monkeypatch)
 
-    sys.modules.pop("nodes.lbm_model_loader", None)
-    from nodes.lbm_model_loader import LBM_Model_Loader
+    sys.modules.pop("lbm_nodes.lbm_model_loader", None)
+    from lbm_nodes.lbm_model_loader import LBM_Model_Loader
 
     spec = LBM_Model_Loader.INPUT_TYPES()
     optional = spec.get("optional", {})
