@@ -15,6 +15,11 @@ All notable changes to ComfyUI-LBM-Pro are documented here.
 | `LBM_Compare_Grid` | `LBM Compare Grid` | `🧪AILab/🔆LBM-Pro` |
 | `LBM_Batch_Processor` | `LBM Batch Processor` | `🧪AILab/🔆LBM-Pro` |
 
+## v0.1.5 — 2026-09-12
+
+### Changed
+- **README expansion.** Added a comprehensive **Reference Models** section covering all three jasperai checkpoints (Relighting / Depth / Normals) with HF repo, default filename, file size, goal field, discrete timesteps / weights / noise_jitter, output shape, intended consumer node, and per-model use-case guidance. Added a **Light Preset Gallery** table inside the `LBM Light Preset` node docs showing all 8 presets' actual rgb_tint / intensity / bridge_noise_sigma values plus a "when to pick which preset" cheat sheet. Replaced the 3-diagram "Data Flow Examples" section with per-workflow descriptions for all 6 example JSONs (each with node count, wiring diagram, run instructions, and edit suggestions). Updated Quick Start to enumerate all 6 workflows.
+
 ## v0.1.4 — 2026-09-12
 
 ### Fixed

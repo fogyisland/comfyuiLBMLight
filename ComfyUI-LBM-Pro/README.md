@@ -128,6 +128,36 @@ Eight specialized nodes in category `🧪AILab/🔆LBM-Pro`. They form three log
 > 2. 将 `light_preset` 输出连接到 `LBM Relighting Pro` 或 `LBM Batch Processor` 的 `light_preset` 端口。
 > 3. 想在一个工作流里对比多种灯光效果时,加多个 `LBM Light Preset` 节点(每个对应一种风格),分别连到并行的 `LBM Relighting Pro`,再把结果丢进 `LBM Compare Grid`。`02_light_presets` 示例工作流演示了这个套路。
 
+#### Light Preset Gallery
+
+Each preset is a `(rgb_tint, intensity, bridge_noise_sigma)` tuple applied to the LBM solver output as a post-processing colour shift. The table below shows the actual numeric values shipped in `lbm_core/presets.py`:
+
+| Name | R / G / B tint | Intensity | Bridge σ | Visual character |
+|------|----------------|-----------|----------|------------------|
+| `golden_hour` | 1.15 / 0.95 / 0.75 | 1.10 | 0.008 | Warm low-angle sun at sunrise / sunset — orange / amber glow, gentle contrast |
+| `overcast` | 0.95 / 0.95 / 0.95 | 0.70 | 0.003 | Diffuse soft cloudy-sky light — desaturated, low contrast, even illumination |
+| `studio_left` | 1.00 / 1.00 / 1.00 | 1.00 | 0.005 | Neutral key light from camera-left — a clean baseline, no colour cast |
+| `studio_top` | 1.05 / 1.05 / 1.00 | 1.20 | 0.005 | Soft top-down studio light — slight warm fill, brighter than baseline |
+| `sunset` | 1.20 / 0.85 / 0.70 | 1.00 | 0.010 | Strong orange directional sunset — high warm cast, dramatic shadows |
+| `night_blue` | 0.70 / 0.85 / 1.10 | 0.60 | 0.020 | Cool dim blue ambience — desaturated, low intensity, blue-leaning |
+| `cool_neutral` | 0.95 / 0.98 / 1.05 | 0.95 | 0.005 | Slightly cool balanced light — subtle blue lean, near-neutral exposure |
+| `warm_neutral` | 1.05 / 1.00 / 0.95 | 1.00 | 0.005 | Slightly warm balanced light — subtle amber lean, near-neutral exposure |
+
+> **中文 灯光预设图鉴:** 每个预设是一个 `(rgb_tint, intensity, bridge_noise_sigma)` 元组,作为后处理色调叠加在 LBM solver 输出之上。上表展示的是 `lbm_core/presets.py` 中实际的数值。`bridge_noise_sigma` 是训练阶段 `BridgeSchedule.noise_jitter` 的值 — 推理阶段不使用该参数,仅作为预设元数据保留(`intensity` 和 `rgb_tint` 才是真正影响最终图像的两个量)。
+
+**When to pick which preset:**
+
+- For a quick demo / first impression: `studio_left` or `warm_neutral` — neutral looks that reveal the model's output without strong bias.
+- For product / fashion / portrait work: `studio_top` or `studio_left` — clean key light, no warm cast.
+- For moody / cinematic looks: `golden_hour`, `sunset`, or `night_blue` — strong colour story, low intensity.
+- For overcast / outdoor soft-light scenes: `overcast` — desaturated and even.
+
+> **中文 何时选哪个预设:**
+> - 快速演示 / 第一印象: `studio_left` 或 `warm_neutral` — 中性,不偏色,直接呈现模型原貌。
+> - 产品 / 时尚 / 人像: `studio_top` 或 `studio_left` — 干净主光,无暖色。
+> - 情绪 / 电影感: `golden_hour`、`sunset`、`night_blue` — 强烈色彩叙事,低强度。
+> - 阴天 / 户外柔光: `overcast` — 偏灰均匀。
+
 ---
 
 ### `LBM Relighting Pro` — `LBM_Relighting_Pro`
@@ -474,6 +504,74 @@ Models auto-download to `ComfyUI/models/diffusion_models/LBM/` on first run (Rel
 
 > **中文:** 模型在首次运行时会自动下载到 `ComfyUI/models/diffusion_models/LBM/`(Relighting、Depth、Normals)。
 
+## Reference Models
+
+LBM-Pro wraps **three** jasperai checkpoints published on Hugging Face. They share the same bridge-solver architecture but differ in goal field, training schedule, and output convention. The Model Loader node auto-downloads whichever you pick — no manual `git lfs` / `huggingface-cli` step required.
+
+> **中文:** LBM-Pro 包装了 jasperai 在 Hugging Face 上发布的 **三个** checkpoint。它们共享同一个 bridge-solver 架构,但目标场、训练调度和输出约定不同。Model Loader 节点会根据你选择的 task 自动下载对应模型,无需手动 `git lfs` 或 `huggingface-cli` 操作。
+
+### Model summary
+
+| Task | HF repo | Default filename | Approx. size | Goal field | Discrete timesteps | Discrete weights | `noise_jitter` | Output shape | Consumed by |
+|------|---------|------------------|--------------|------------|--------------------|------------------|----------------|--------------|-------------|
+| `relighting` | `jasperai/LBM_relighting` | `LBM_relighting.safetensors` | ~1.7 GB | `source_image` | 250, 500, 750, 1000 | 0.25 / 0.25 / 0.25 / 0.25 | 0.005 | `(B, H, W, 3)` fp32 `[0, 1]` | `LBM Relighting Pro`, `LBM Batch Processor` |
+| `depth` | `jasperai/LBM_depth` | `LBM_depth.safetensors` | ~1.4 GB | `depth` | 250, 500, 750, 1000 | 0.025 / 0.05 / 0.025 / 0.90 | 0.100 | `(B, H, W, 1)` raw → 3-channel post-processed | `LBM Depth/Normal Pro` (set `task=depth`) |
+| `normal` | `jasperai/LBM_normals` | `LBM_normals.safetensors` | ~1.4 GB | `normals` | 250, 500, 750, 1000 | 0.05 / 0.10 / 0.05 / 0.80 | 0.100 | `(B, H, W, 3)` RGB-encoded normals `[-1, 1]` | `LBM Depth/Normal Pro` (set `task=normal`) |
+
+> **中文 模型汇总表:** 上面这张表列出了三个模型的来源、文件名、大小、训练目标、采样调度、噪声抖动、输出形状,以及被哪个节点消费。
+
+### `jasperai/LBM_relighting` (Relighting)
+
+- **What it does**: Given an input image, outputs a single image of the same scene *relit* as if photographed under a different lighting condition. The bridge solver runs 28 Euler steps from the source-image anchor to a relit goal; the `LBM Relighting Pro` node then overlays the light preset's `(rgb_tint, intensity)` on top.
+- **Output convention**: `(B, H, W, 3)` fp32 in `[0, 1]`, identical shape to the input — no resize, no aspect-ratio change.
+- **When to use**: Replacing an overcast outdoor photo with a warm golden-hour look; changing a flat product shot to a moody night ambience; previewing lighting variations for film / commercial pre-visualization.
+- **Recommended preset pairings**: `golden_hour` (default if you want a quick demo), `studio_left` (for unbiased comparison), `night_blue` (for cinematic).
+
+> **中文:** 该模型接收一张输入图像,输出同一场景**重新打光**后的图像(仿佛在不同光照条件下拍摄)。bridge solver 从源图锚点经 28 步 Euler 积分到重新打光的目标;`LBM Relighting Pro` 节点随后叠加灯光预设的 `(rgb_tint, intensity)`。输出形状与输入一致 `(B, H, W, 3)` fp32 `[0, 1]`。典型用途:把阴天户外照片换成金色时刻;把平淡的产品图换成夜晚情绪感;影视 / 商业预可视化预览不同灯光方案。推荐预设: 默认演示用 `golden_hour`;无偏对比用 `studio_left`;电影感用 `night_blue`。
+
+### `jasperai/LBM_depth` (Monocular Depth)
+
+- **What it does**: Given an RGB image, predicts per-pixel depth as a single-channel `(B, H, W, 1)` map where larger values mean *farther* from the camera. The bridge solver runs 28 steps from the source-image anchor to a depth-map goal.
+- **Output convention**: Solver output is `(B, H, W, 1)` with values scaled to `[0, 1]` where 0 = near, 1 = far. `LBM Depth/Normal Pro` emits two outputs: `raw` (the unscaled version) and `post_processed` (= `1 − raw`, so 1 = near, 0 = far — the convention most depth viewers expect).
+- **When to use**: Driving a depth-conditioned ControlNet; building a 3D parallax effect; producing a depth-based focal blur; feeding into `LBM Depth Visualizer` to see one of four colormaps (turbo, viridis, inferno, gray).
+- **Important**: `LBM Depth Visualizer` accepts both `raw` and `post_processed` — the visualizer's own `auto_normalize` widget always stretches to `[0, 1]` per batch regardless of which one you pass.
+
+> **中文:** 输入 RGB 图,逐像素预测深度,输出单通道 `(B, H, W, 1)` 深度图(值越大表示越远)。bridge solver 从源图锚点经 28 步到深度目标。`LBM Depth/Normal Pro` 节点输出两个端口: `raw`(原始)、`post_processed`(等于 `1 − raw`,近=1 / 远=0,这是多数深度查看器的预期方向)。典型用途: 驱动 ControlNet 深度条件;做 3D 视差;基于深度的焦散模糊;接到 `LBM Depth Visualizer` 看四种色图。`LBM Depth Visualizer` 的 `auto_normalize` widget 始终按 batch 拉伸到 `[0, 1]`,所以传 `raw` 或 `post_processed` 都会被正确归一化。
+
+### `jasperai/LBM_normals` (Surface Normals)
+
+- **What it does**: Given an RGB image, predicts per-pixel surface normals as a `(B, H, W, 3)` RGB-encoded map. Each pixel is a unit-length 3-vector `[Nx, Ny, Nz]` encoded as `(R, G, B)` where `(R, G, B) = (Nx, Ny, Nz) × 0.5 + 0.5` — i.e. displayed in `[0, 1]` but representing the `[-1, 1]` direction.
+- **Output convention**: Already in the displayable `[0, 1]` range. For `LBM Depth/Normal Pro`, both `raw` and `post_processed` outputs equal each other for the normal task (no inversion needed). `LBM Normal Visualizer` re-normalizes each pixel vector to unit length (cleaning any drift) and returns fp32 regardless of input dtype.
+- **When to use**: Driving a normal-conditioned ControlNet; producing an NPR (non-photorealistic) cel-shading effect; feeding a normal map into a 3D renderer (after `LBM Normal Visualizer`).
+
+> **中文:** 输入 RGB 图,逐像素预测表面法线,输出 `(B, H, W, 3)` RGB 编码的法线图。每个像素是一个单位长度的 3 维向量 `[Nx, Ny, Nz]`,以 `(R, G, B) = (Nx, Ny, Nz) × 0.5 + 0.5` 编码,即显示在 `[0, 1]` 但代表 `[-1, 1]` 方向。`LBM Depth/Normal Pro` 在法线任务下 `raw` 和 `post_processed` 完全一致(无需反相)。`LBM Normal Visualizer` 把每个像素向量重新归一化到单位长度(清理漂移),并始终返回 fp32。典型用途: 驱动 ControlNet 法线条件;做 NPR / 卡通描边;把法线图喂给 3D 渲染器。
+
+### Architecture (what's inside every model)
+
+All three checkpoints share the same bridge-solver architecture:
+
+- **UNet backbone** (`CondUNet2D`): `block_out_channels=[320, 640, 1280]`, `transformer_layers_per_block=[1, 2, 10]`, `attention_head_dim=[5, 10, 20]` — a SDXL-sized denoiser running in fp16 / bf16 / fp32 depending on the Model Loader's `precision` widget.
+- **Scheduler**: `FlowMatchEulerDiscreteScheduler` with `num_train_timesteps=1000`, `shift=1.0`, `beta_schedule=scaled_linear`, `beta_start=0.00085`, `beta_end=0.012`. The bridge solver samples at 4 discrete timesteps `[250, 500, 750, 1000]` weighted by the per-task `discrete_weights` table above.
+- **VAE / codec** (`LatentCodec`): `AutoencoderKL` with `block_out_channels=[128, 256, 512, 512]`, `latent_channels=4`, `scaling_factor=0.13025`, `sample_size=1024`. Latent encoding/decoding is tiled for large images with `reflect`-padding fallback for small tiles (C10 / C11 audit fix).
+- **Aggregator**: `ConditionAggregator(branches=[])` — the empty-branches default; future conditioning (C29) would add branch modules here without touching the inference path.
+
+> **中文:** 三个 checkpoint 共享同一套 bridge-solver 架构 — UNet(`CondUNet2D`)+ `FlowMatchEulerDiscreteScheduler` + VAE(`LatentCodec`)+ `ConditionAggregator`。具体超参如上。推理时按 4 个离散时间步 `[250, 500, 750, 1000]` 加权采样,权重由各 task 的 `discrete_weights` 表控制。
+
+### Checkpoint key layout
+
+The jasperai safetensors file stores the autoencoder weights under the `vae.*` prefix (jasperai's training format). Our `BridgeSolver` keeps the codec under `codec.*`, so `load_lbm_checkpoint` in `lbm_core/model_factory.py` transparently remaps keys:
+
+| Checkpoint key | Solver key |
+|----------------|------------|
+| `vae.vae_model.X` | `codec.vae_model.X` |
+| `vae.quant_conv.X` | `codec.vae_model.quant_conv.X` |
+| `vae.post_quant_conv.X` | `codec.vae_model.post_quant_conv.X` |
+| anything else | passes through unchanged |
+
+The loader also requires ≥ 95 % of solver parameters to be matched by the checkpoint. If you see `RuntimeError: LBM checkpoint load failed: only N/M parameters matched`, the file is not a jasperai LBM checkpoint.
+
+> **中文:** jasperai 的 safetensors 把 VAE 权重放在 `vae.*` 前缀下(jasperai 的训练格式),而我们的 `BridgeSolver` 把 codec 放在 `codec.*` 下,因此 `lbm_core/model_factory.py` 中的 `load_lbm_checkpoint` 会在加载时透明地重命名键。加载器还要求 ≥ 95% 的 solver 参数必须由 checkpoint 匹配,否则报错 `RuntimeError: LBM checkpoint load failed`,这通常意味着该文件不是 jasperai LBM checkpoint。
+
 ## Installation Requirements
 
 - **VRAM**: ≥ 8 GB (relighting @ 1024²) — 24 GB recommended for batch processing
@@ -517,23 +615,38 @@ By default, the Model Loader downloads from `hf-mirror.com` (a Hugging Face mirr
 ## Quick Start
 
 1. Restart ComfyUI.
-2. Open `example_workflows/01_basic_relighting.json` from the ComfyUI workflow menu.
-3. Replace the `LoadImage` "example.png" with your own image.
+2. Open any workflow from `example_workflows/`:
+   - `01_basic_relighting.json` — minimal relighting (start here)
+   - `02_light_presets.json` — 4 preset comparison grid
+   - `03_depth_normal_pipeline.json` — depth + colormap demo
+   - `04_model_cache_chain.json` — cache reuse proof
+   - `05_compare_grid.json` — 2×2 depth colormap grid
+   - `06_batch_processing.json` — directory batch relighting
+3. For `01–05`, replace the `LoadImage` "example.png" with your own image. For `06_batch_processing`, create `ComfyUI/input/input_images/` first.
 4. Run the workflow.
 
-The Relighting model (~1.7 GB) downloads automatically the first time.
+The Relighting model (~1.7 GB) downloads automatically the first time. See the **Data Flow Examples** section below for a per-workflow breakdown.
 
 > **中文 快速上手:**
 > 1. 重启 ComfyUI。
-> 2. 从 ComfyUI 工作流菜单打开 `example_workflows/01_basic_relighting.json`。
-> 3. 把 `LoadImage` 的 "example.png" 替换成你自己的图像。
+> 2. 从 `example_workflows/` 中任选一个工作流打开 — 建议从 `01_basic_relighting.json` 开始。
+> 3. 把 `LoadImage` 的 "example.png" 替换成你自己的图像(`06_batch_processing` 需要先在 `ComfyUI/input/input_images/` 创建目录并放入图片)。
 > 4. 运行工作流。
 >
-> Relighting 模型(~1.7 GB)首次运行时会自动下载。
+> Relighting 模型(~1.7 GB)首次运行时会自动下载。**Data Flow Examples** 一节对每个工作流有详细说明。
 
 ## Data Flow Examples
 
-### Basic relighting
+The `example_workflows/` directory ships **6 ready-to-run JSON workflows**. Drop any of them into ComfyUI's workflow menu to see the corresponding feature in action.
+
+> **中文:** `example_workflows/` 目录随包附带 **6 个可直接运行的工作流 JSON**。把它们中的任意一个拖入 ComfyUI 工作流菜单即可看到对应功能的演示。
+
+### `01_basic_relighting.json` — minimal end-to-end relighting
+
+**What it shows**: The smallest possible pipeline — one image, one model load, one light preset, one relit output, one saved file.
+
+**Nodes (5):** `LBM_Model_Loader` (relighting, bf16) → `LoadImage` → `LBM_Light_Preset` (warm_neutral) → `LBM_Relighting_Pro` (28 steps) → `SaveImage` (prefix `relit`).
+
 ```
 [LoadImage] ──┐
               ├─→ [LBM Relighting Pro] → [SaveImage]
@@ -541,24 +654,111 @@ The Relighting model (~1.7 GB) downloads automatically the first time.
 [LBM Light Preset] ─────┘
 ```
 
-### Multi-preset comparison
+**How to run:** Open it, point `LoadImage` at any image, click Queue Prompt. The Relighting model (~1.7 GB) downloads on the first run; subsequent runs hit the in-memory cache.
+
+> **中文:** 这是最小可运行流水线 — 一张图、一次模型加载、一个灯光预设、一张打光输出、一个保存文件。运行方法: 打开工作流,把 `LoadImage` 指向任意图片,点击 Queue Prompt。Relighting 模型(~1.7 GB)首次运行会自动下载,后续命中进程内缓存。
+
+---
+
+### `02_light_presets.json` — four lighting looks, side-by-side
+
+**What it shows**: The same source image is relit four times in parallel with four different presets, then stitched into a single comparison grid. Demonstrates preset diversity and `LBM Compare Grid`'s `auto` layout.
+
+**Nodes (11):** One `LBM_Model_Loader`, one `LoadImage`, four `LBM_Light_Preset` (`golden_hour`, `studio_top`, `night_blue`, `overcast`), four `LBM_Relighting_Pro` (each wired to one preset), one `LBM_Compare_Grid` (layout=`auto`, padding=8, batch_mode=`error`), one `SaveImage` (prefix `light_presets_compare`).
+
 ```
 [LoadImage] ──┬─→ [Relighting Pro (golden_hour)] ──┐
               ├─→ [Relighting Pro (studio_top)]  ──┤
-[LBM Model Loader] ──────────┬─→ ...                ├─→ [Compare Grid] → [SaveImage]
-              ├─→ ...                              │
-[LBM Light Preset × 4] ─────┴─→ ...                ┘
+[LBM Model Loader] ──────────┬─→ [Relighting Pro (night_blue)]  ──┼─→ [Compare Grid] → [SaveImage]
+              ├─→ [Relighting Pro (overcast)]   ──┤
+[LBM Light Preset × 4] ─────┴─→ ...                           ┘
 ```
 
-### Depth visualization pipeline
+**Why it's useful**: At a glance you can compare how the model treats the same image under different lighting conditions — the four frames show the model's response range, not just the preset's colour shift.
+
+> **中文:** 同一张源图被并行打光 4 次(4 种不同预设),然后拼成一张对比网格。展示预设的多样性和 `LBM Compare Grid` 的 `auto` 布局。一目了然地看出同一张图在不同灯光下的响应(展示的是模型对不同光照的响应,而不只是预设的色调变化)。
+
+---
+
+### `03_depth_normal_pipeline.json` — depth extraction + dual colormap
+
+**What it shows**: A depth model loads, predicts a depth map, and visualizes it with both `turbo` (saved to disk) and `inferno` (previewed live). Demonstrates the `raw` / `post_processed` output ports and `LBM Depth Visualizer` colormap switching.
+
+**Nodes (7):** `LBM_Model_Loader` (depth, bf16) → `LoadImage` → `LBM_DepthNormal_Pro` (task=depth, 28 steps) → two parallel `LBM_Depth_Visualizer` (turbo, inferno) → `SaveImage` (prefix `depth_pp`) + `PreviewImage`.
+
 ```
 [LoadImage] → [LBM Model Loader (depth)]
               ↓
        [LBM Depth/Normal Pro] → [LBM Depth Visualizer (turbo)] → [SaveImage]
-                                [LBM Depth Visualizer (inferno)] → [SaveImage]
+                                [LBM Depth Visualizer (inferno)] → [PreviewImage]
 ```
 
-> **中文 数据流示例:** 上述三张图分别展示:基础打光、多预设对比、深度可视化流水线。每张图的节点连线一目了然 — `LoadImage` 提供图像,`LBM Model Loader` 提供模型,`LBM Light Preset`(可选)提供灯光风格,推理节点输出图像,`SaveImage` 落盘。批量处理或可视化只需把推理输出分别接到 `LBM Compare Grid` / 多个 `LBM Depth Visualizer` 即可。
+**Try editing:** Change one visualizer's `colormap` to `viridis` or `gray`. Toggle `invert` to see near/far flipped. Toggle `auto_normalize` off to see the raw un-stretched depth.
+
+> **中文:** 加载 depth 模型,预测深度图,用 `turbo`(保存)和 `inferno`(实时预览)两种色图可视化。展示 `raw` / `post_processed` 两个输出端口和 `LBM Depth Visualizer` 的色图切换。可编辑: 把一个可视化节点的 `colormap` 改成 `viridis` 或 `gray`;切换 `invert` 看近/远翻转;关掉 `auto_normalize` 看未拉伸的原始深度。
+
+---
+
+### `04_model_cache_chain.json` — caching benefit demonstrated
+
+**What it shows**: Two `LBM Relighting Pro` instances share a single `LBM Model Loader` output. Both produce different results (different image inputs via two `LoadImage` slots) but reuse the same loaded checkpoint in VRAM — proving the cache works across nodes in the same workflow.
+
+**Nodes (5):** `LBM_Model_Loader` (relighting, bf16) → two `LoadImage` → two `LBM_Relighting_Pro` (each with its own `LBM_Light_Preset` defaulted to warm_neutral) → `LBM_Compare_Grid` (layout=`horizontal`, padding=8, batch_mode=`error`) → `SaveImage` (prefix `cache_chain_demo`).
+
+```
+[LBM Model Loader] ─┬─→ [LBM Relighting Pro] ─┐
+                    ├─→ [LBM Relighting Pro] ─┴─→ [Compare Grid] → [SaveImage]
+[LoadImage × 2] ────┘
+```
+
+**Why it's useful**: Run this once with the warm_neutral preset on both branches and time it; then duplicate the workflow and run again with two separate `LBM_Model_Loader` nodes — the second run pays the model-load cost twice. This is the speedup the cache provides.
+
+> **中文:** 两个 `LBM Relighting Pro` 实例共用一个 `LBM Model Loader` 输出。两个推理节点处理不同的输入图像,但复用同一份加载到显存里的 checkpoint — 直接证明缓存在同一工作流内跨节点生效。运行方法: 先用两个 warm_neutral 预设跑一次并计时,然后复制工作流、用两个独立的 `LBM_Model_Loader` 再跑一次,对比第二次多出来的加载耗时。
+
+---
+
+### `05_compare_grid.json` — depth colormap comparison 2x2
+
+**What it shows**: One depth map is colourised four ways (viridis / inferno / turbo / gray) and stitched into a `grid_2x2` layout. Demonstrates `LBM Compare Grid`'s 2×2 layout with all four slots filled, and the depth visualizer's colormap diversity.
+
+**Nodes (9):** `LBM_Model_Loader` (depth, bf16) → `LoadImage` → `LBM_DepthNormal_Pro` (depth, 28 steps) → four parallel `LBM_Depth_Visualizer` (viridis, inferno, turbo, gray) → `LBM_Compare_Grid` (layout=`grid_2x2`, padding=8, batch_mode=`error`) → `SaveImage` (prefix `colormap_compare`).
+
+```
+[LoadImage] → [LBM Model Loader (depth)]
+              ↓
+       [LBM Depth/Normal Pro] ─┬─→ [Depth Visualizer (viridis)]  ─┐
+                                ├─→ [Depth Visualizer (inferno)]  ─┤
+                                ├─→ [Depth Visualizer (turbo)]    ─┼─→ [Compare Grid (2x2)] → [SaveImage]
+                                └─→ [Depth Visualizer (gray)]     ─┘
+```
+
+**Note**: This workflow has exactly **4** images going into a `grid_2x2` (4 cells), so all four slots fill cleanly.
+
+**Why it's useful**: A 2×2 grid of the same depth in different colormaps is the standard way to pick the right one for a downstream consumer (ControlNet prefers `gray`; visualisation prefers `turbo`).
+
+> **中文:** 同一张深度图用四种色图上色(viridis / inferno / turbo / gray),拼成 2×2 网格。这个工作流正好 4 张图填满 2×2 的四个格子。注意:`grid_2x2` 放 4 张图时不会有空格。这是为下游消费者选色图的标准做法 — ControlNet 偏好 `gray`,可视化偏好 `turbo`。
+
+---
+
+### `06_batch_processing.json` — directory of images, consistent lighting
+
+**What it shows**: A directory of images loads into a batch, gets relit with the same parameters in one pass, and is saved as a numbered series. Demonstrates `LBM Batch Processor`'s `max_batch` chunking and the integration with `LoadImagesFromDirectory`.
+
+**Nodes (5):** `LBM_Model_Loader` (relighting, bf16) → `LoadImagesFromDirectory` (folder=`input_images`) → `LBM_Light_Preset` (warm_neutral, el=45°) → `LBM_Batch_Processor` (steps=28, max_batch=4) → `SaveImage` (prefix `batch_relit`).
+
+```
+[LBM Model Loader] ─┐
+[LoadImagesFromDirectory (input_images/)] ─┬─→ [LBM Batch Processor] → [SaveImage (batch_relit_NNNNN.png)]
+[LBM Light Preset] ────────────────────────┘
+```
+
+**Before running:** Create `ComfyUI/input/input_images/` and drop 5–20 images of any size/aspect ratio. The batch processor handles arbitrary aspect ratios per frame; mismatched sizes are not resized (the solver preserves each frame's H × W).
+
+**Why it's useful**: Production photo-batch workflows — applying a unified "look" to a directory of photos (product catalogue, travel album, social-media batch) without manual per-image tweaking.
+
+> **中文:** 一个目录的图片被加载成 batch,用同一组参数一次过打光,保存为带编号的图像序列。展示 `LBM Batch Processor` 的 `max_batch` 分块机制以及与 `LoadImagesFromDirectory` 的集成。运行前: 在 `ComfyUI/input/input_images/` 创建目录,放入 5–20 张任意尺寸 / 长宽比的图片。批处理器支持每帧任意长宽比;solver 保留每帧的 H × W 不做 resize。典型用途: 生产级照片批量处理(产品图册、旅行相册、社交媒体批量),无需逐张手动调参。
+
+---
 
 ## Architecture
 
