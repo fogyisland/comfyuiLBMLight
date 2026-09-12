@@ -20,7 +20,7 @@ if _PKG_DIR not in sys.path:
 
 from lbm_core.types import LIGHT_PRESET_TYPE, LBM_MODEL_TYPE
 
-__version__ = "0.1.6"
+__version__ = "0.1.7"
 
 _NODE_MODULES = {
     "LBM_Model_Loader": "lbm_nodes.lbm_model_loader",

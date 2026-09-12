@@ -41,25 +41,30 @@ class StageConfig:
 
 
 class InferenceCore(nn.Module):
-    """Tracks device and dtype, provides ergonomic ``move_to`` helpers.
+    """Lightweight base class shared by every inference component.
 
-    The class is intentionally thin.  It exists so other modules can
-    declare ``self.device`` and ``self.dtype`` once, and call a
-    single method to refresh both after a ``.to(...)`` call.
+    Provides ergonomic ``move_to`` / ``hard_freeze`` helpers. Device
+    and dtype bookkeeping is intentionally delegated to ``nn.Module``
+    itself (``self.to(device, dtype)`` already caches both); this class
+    does NOT shadow those attributes with custom ``self.device`` /
+    ``self.dtype`` fields, because ``nn.Module.__setattr__`` rejects
+    ``device`` as a reserved attribute name.
     """
 
     def __init__(self, config: Optional[StageConfig] = None) -> None:
         super().__init__()
         self.stage_config = config or StageConfig()
-        self.device = torch.device("cpu")
-        self.dtype = torch.float32
 
     def move_to(self, *, device=None, dtype=None, non_blocking: bool = False) -> "InferenceCore":
-        """Apply ``.to(...)`` and remember the resolved device and dtype.
+        """Apply ``.to(...)`` and return ``self``.
 
         Accepts keyword arguments to mirror the spirit of ``Module.to``
         without inheriting its quirky positional semantics.  Returns
         ``self`` so calls can be chained.
+
+        Device / dtype are read back via ``next(self.parameters()).device``
+        and ``next(self.parameters()).dtype`` respectively — these are
+        kept current by ``nn.Module`` automatically after ``.to(...)``.
         """
         kwargs: dict = {}
         if device is not None:
@@ -70,10 +75,6 @@ class InferenceCore(nn.Module):
             kwargs["non_blocking"] = True
         if kwargs:
             super().to(**kwargs)
-        if device is not None:
-            self.device = device if isinstance(device, torch.device) else torch.device(device)
-        if dtype is not None:
-            self.dtype = dtype
         return self
 
     def hard_freeze(self) -> None:

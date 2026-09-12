@@ -15,6 +15,11 @@ All notable changes to ComfyUI-LBM-Pro are documented here.
 | `LBM_Compare_Grid` | `LBM Compare Grid` | `🧪BMLab/🔆LBM-Pro` |
 | `LBM_Batch_Processor` | `LBM Batch Processor` | `🧪BMLab/🔆LBM-Pro` |
 
+## v0.1.7 — 2026-09-12
+
+### Fixed
+- **`can't set attribute 'device'` on `LBM_Model_Loader` first inference.** `InferenceCore.__init__` was assigning `self.device = torch.device("cpu")` and `self.dtype = torch.float32`; both are reserved attribute names on `torch.nn.Module`, so the very first `CondUNet2D(...)` call inside `build_lbm_model` raised `AttributeError: can't set attribute 'device'`. Removed both attributes — `nn.Module` already tracks device/dtype via `.to(...)` and exposes them through `next(module.parameters()).device` / `.dtype`. `move_to()` simplified to just delegate to `super().to(...)`. Verified in the ComfyUI venv: `InferenceCore()`, `move_to(...)`, `hard_freeze()` all succeed.
+
 ## v0.1.6 — 2026-09-12
 
 ### Fixed
