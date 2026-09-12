@@ -2,6 +2,19 @@
 
 All notable changes to ComfyUI-LBM-Pro are documented here.
 
+## Nodes
+
+| Internal class | Display name | Category |
+|----------------|--------------|----------|
+| `LBM_Model_Loader` | `LBM Model Loader` | `🧪AILab/🔆LBM-Pro` |
+| `LBM_Light_Preset` | `LBM Light Preset` | `🧪AILab/🔆LBM-Pro` |
+| `LBM_Relighting_Pro` | `LBM Relighting Pro` | `🧪AILab/🔆LBM-Pro` |
+| `LBM_DepthNormal_Pro` | `LBM Depth/Normal Pro` | `🧪AILab/🔆LBM-Pro` |
+| `LBM_Depth_Visualizer` | `LBM Depth Visualizer` | `🧪AILab/🔆LBM-Pro` |
+| `LBM_Normal_Visualizer` | `LBM Normal Visualizer` | `🧪AILab/🔆LBM-Pro` |
+| `LBM_Compare_Grid` | `LBM Compare Grid` | `🧪AILab/🔆LBM-Pro` |
+| `LBM_Batch_Processor` | `LBM Batch Processor` | `🧪AILab/🔆LBM-Pro` |
+
 ## v0.1.3 — 2026-09-11
 
 ### Fixed
@@ -13,6 +26,7 @@ All notable changes to ComfyUI-LBM-Pro are documented here.
 - **Nodes** (`nodes/lbm_*.py`): Compare Grid rejects multi-frame batches by default (opt-in `batch_mode`); Depth/Normal Pro refuses wrong-task model; Model Loader shows download progress bar; ImportError logging.
 - **China mirror** (UR1): default download URL is `hf-mirror.com` with `huggingface.co` fallback; widget in `LBM Model Loader`.
 - **Packaging**: `[build-system]` block, full `[project]` metadata, `ComfyUI_LBM_Pro` shipped in wheel, `torch` removed from `requirements.txt`, `Pillow`/`transformers` removed (unused/dead), README rewritten with §Installation Requirements + §Troubleshooting, planning docs marked SUPERSEDED, `_load_module_map` dead code removed.
+- **Custom-node loader fix** (`__init__.py`): ComfyUI loads custom nodes via `importlib` with only the package directory on `sys.path`, so the top-level `from lbm_core.types import ...` import was raising `ModuleNotFoundError` on first launch and the package registered zero nodes. The package directory is now inserted into `sys.path` before any internal import so `lbm_core`, `lbm_native`, and `nodes` resolve correctly.
 
 ### Tests
 - 90 tests passing (66 prior to the audit + 24 new tests across bridge inference, codec, loader, cache, aggregator, and node UX).
